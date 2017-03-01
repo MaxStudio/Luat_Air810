@@ -1,3 +1,10 @@
+--[[
+模块名称：GPS管理
+模块功能：GPS打开与关闭、GPS NEMA数据解析、GPS经纬度高度速度等功能接口
+模块最后修改时间：2017.02.21
+]]
+
+--定义模块,导入依赖库
 local base = _G
 local table = require"table"
 local uart = require"uart"
@@ -13,6 +20,7 @@ local os = require"os"
 local pack = require"pack"
 module(...,package.seeall)
 
+--加载常用的全局函数至本地
 local print = base.print
 local tonumber = base.tonumber
 local tostring = base.tostring
@@ -25,34 +33,60 @@ local smatch = string.match
 local sbyte = string.byte
 local sformat = string.format
 local srep = string.rep
+
+--gps全局信息表
 local gps = {}
+--控制功能全局信息表
 local c = {}
 
+--下面的消息和事件，是本功能模块产生内部消息时使用的参数，外部应用功能模块可注册消息处理函数，识别利用消息和事件
+--GPS内部消息ID
 GPS_STATE_IND = "GPS_STATE_IND"
+--GPS关闭事件
 GPS_CLOSE_EVT = 0
+--GPS打开事件
 GPS_OPEN_EVT = 1
+--GPS定位成功事件（过滤了前段时间的数据）
 GPS_LOCATION_SUC_EVT = 2
+--GPS定位失败事件
 GPS_LOCATION_FAIL_EVT = 3
+--没有GPS芯片事件
 GPS_NO_CHIP_EVT = 4
+--有GPS芯片事件
 GPS_HAS_CHIP_EVT = 5
+--GPS定位成功事件（还没有过滤前段时间的数据）
 GPS_LOCATION_UNFILTER_SUC_EVT = 6
 
+--省电模式
 GPS_POWER_SAVE_MODE = 0
+--连续定位模式
 GPS_CONTINUOUS_MODE = 1
+--仅支持北斗定位
 GPS_SINGLE_BEIDOU_GNSS = 2
+--仅支持GPS定位
 GPS_SINGLE_GPS_GNSS = 3
+--GPS和北斗混合定位
 GPS_MIX_GNSS = 4
+--NEMA协议版本
 GPS_NMEA_VERSION = 5
+--查询PACC
 QRY_PACC = 6
 
+--经纬度为度的格式
 GPS_DEGREES = 0
+--经纬度为度分的格式
 GPS_DEGREES_MINUTES = 1
 
+--格林威治时间
 GPS_GREENWICH_TIME = 0
+--北京时间
 GPS_BEIJING_TIME = 1
+--越南时间
 GPS_VIETNAM_TIME = 2
 
+--速度单位为海里每小时
 GPS_KNOT_SPD = 0
+--速度单位为公里每小时
 GPS_KILOMETER_SPD = 1
 
 GPS_RDA = 0
@@ -61,6 +95,14 @@ GPS_MTK = 2
 
 local nogpschipcnt,hdop,paccflg,paccqry,pacc = 5
 
+--[[
+函数名：abs
+功能  ：求两个数之差的绝对值
+参数  ：
+		v1：第一个数
+		v2：第二个数
+返回值：差的绝对值
+]]
 local function abs(v1,v2)
 	return ((v1>v2) and (v1-v2) or (v2-v1))
 end
@@ -97,6 +139,13 @@ local function getmilli(v,vr)
 	return OT,T,R
 end
 
+--[[
+函数名：getstrength
+功能  ：解析GSV数据
+参数  ：
+		sg：NEMA中的一行GSV数据
+返回值：无
+]]
 local function getstrength(sg)
 	local d1,d2,curnum,lineno,total,sgv_str = sfind(sg,gps.gsvprefix.."GSV,(%d),(%d),(%d+),(.*)%*.*")
 	if not curnum or not lineno or not total or not sgv_str then
@@ -223,6 +272,13 @@ local function filter(LA,RA,LL,RL)
 	return push(A, L)
 end
 
+--[[
+函数名：rtctolocal
+功能  ：GPS时间转化为本模块内设置的时区时间
+参数  ：
+		y,m,d,hh,mm,ss：GPS时间中的年月日时分秒
+返回值：本模块内设置的时区时间(table类型，t.year,t.month,t.day,t.hour,t.min,t.sec)
+]]
 local function rtctolocal(y,m,d,hh,mm,ss)
 	--print("rtctolocal",y,m,d,hh,mm,ss)
 	local flg
@@ -276,6 +332,13 @@ local function rtctolocal(y,m,d,hh,mm,ss)
 	return t
 end
 
+--[[
+函数名：proc
+功能  ：处理每条NEMA数据
+参数  ：
+		s：一条NEMA数据
+返回值：无
+]]
 local function proc(s)
 	local latti,lattir,longti,longtir,spd1,cog1,gpsfind,gpstime,gpsdate,numofsate,numoflocationsate,hdp
 
@@ -285,6 +348,7 @@ local function proc(s)
 
 	gps.find = ""
 
+	--GGA数据
 	if smatch(s, "GGA") then
 		local hh,sep
 		latti,lattir,gps.latyp,longti,longtir,gps.longtyp,gpsfind,numoflocationsate,hdp,hh,sep = smatch(s,"GGA,%d+%.%d+,(%d+)%.(%d+),([NS]),(%d+)%.(%d+),([EW]),(%d),(%d+),([%d%.]*),(.*),M,(.*),M")
@@ -297,6 +361,7 @@ local function proc(s)
 			gps.ggalng,gps.ggalat = longti.."."..longtir,latti.."."..lattir
 		end
 		if hdp then hdop = hdp end
+	--RMC数据
 	elseif smatch(s, "RMC") then
 		gpstime,gpsfind,latti,lattir,gps.latyp,longti,longtir,gps.longtyp,spd1,cog1,gpsdate = smatch(s,"RMC,(%d%d%d%d%d%d)%.%d+,(%w),(%d*)%.*(%d*),([NS]*),(%d*)%.*(%d*),([EW]*),(.-),(.-),(%d%d%d%d%d%d),")
 		if gpsfind == "A" and longti ~= nil and longtir ~= nil and latti ~= nil and lattir ~= nil and longti ~= "" and longtir ~= "" and latti ~= "" and lattir ~= "" then
@@ -315,9 +380,11 @@ local function proc(s)
 		if gpsfind == "A" and longti ~= nil and longtir ~= nil and latti ~= nil and lattir ~= nil  then
 			gps.find = "S"
 		end	]]	
+	--GSV数据
 	elseif smatch(s,"GSV") and not smatch(s,"GLGSV") then
 		numofsate = smatch(s,"GSV,%d+,%d+,(%d+)")
 		getstrength(s)
+	--GSA数据
 	elseif smatch(s,"GSA") then
 		local satesn = smatch(s,"GSA,%w*,%d*,(%d*,%d*,%d*,%d*,%d*,%d*,%d*,%d*,%d*,%d*,%d*,%d*,)") or ""
 		local mtch,num = true
@@ -334,6 +401,7 @@ local function proc(s)
 		end
 	end
 
+	--定位成功
 	if gps.find == "S" then
 		if gps.filterbgn == nil and gps.filtertime > 0 then
 			gps.filterbgn = c.gps
@@ -347,6 +415,7 @@ local function proc(s)
 		end
 	end
 
+	--可见卫星个数
 	numofsate = tonumber(numofsate or "0")
 	if numofsate > 9 then
 		numofsate = 9
@@ -355,6 +424,7 @@ local function proc(s)
 		gps.satenum = numofsate
 	end
 
+	--定位使用的卫星个数
 	numoflocationsate = tonumber(numoflocationsate or "0")
 	if numoflocationsate > 9 then
 		numoflocationsate = 9
@@ -363,6 +433,7 @@ local function proc(s)
 		gps.locationsatenum = numoflocationsate
 	end
 
+	--速度
 	if spd1 and spd1 ~= "" then
 		local r1,r2 = smatch(spd1, "(%d+)%.*(%d*)")
 		if r1 then
@@ -373,6 +444,7 @@ local function proc(s)
 			end
 		end
 	end
+	--方向角
 	if cog1 and cog1 ~= "" then
 		local r1,r2 = smatch(cog1, "(%d+)%.*(%d*)")
 		if r1 then
@@ -391,6 +463,7 @@ local function proc(s)
 		return
 	end
 
+	--经纬度
 	local LA, RA, LL, RL = filter(latti,lattir,longti,longtir)
 	--print("filterg", LA, RA, LL, RL)
 	if not LA or not RA or not LL or not RL then
@@ -405,6 +478,17 @@ local function proc(s)
 	gps.olati = gps.olati or 0
 end
 
+--[[
+函数名：diffofloc
+功能  ：计算两对经纬度之间的直线距离（近似值）
+参数  ：
+		latti1：纬度1（度格式，例如31.12345度）
+		longti1：经度1（度格式）
+		latti2：纬度2（度格式）
+		longti2：经度2（度格式）
+		typ：距离类型
+返回值：typ如果为true，返回的是直线距离(单位米)的平方和；否则返回的是直线距离(单位米)
+]]
 function diffofloc(latti1, longti1, latti2, longti2)
 	local I1,I2,R1,R2,diff,d
 	I1,R1=smatch(latti1,"(%d+)%.(%d+)")
@@ -445,6 +529,12 @@ local function stoppaccqry()
 	paccqry = nil
 end
 
+--[[
+函数名：read
+功能  ：串口数据接收处理函数
+参数  ：无
+返回值：无
+]]
 local function read(str)
 	local strgps = ""
 	local gpsreadloop = true
@@ -478,7 +568,7 @@ local function read(str)
 			c.gpsprt = c.gps
 			print("gps rlt", gps.longtyp,gps.olong,gps.long,gps.latyp,gps.olati,gps.lati,gps.locationsatenum,gps.sn,gps.satenum)
 		end
-
+			--定位成功
 		if gps.find == "S" then
 			gps.findall = true
 			c.gpsfind = c.gps
@@ -492,6 +582,7 @@ local function read(str)
 				startlastesttimer()
 				startpaccqry(true)
 			end
+			--定位失败
 		elseif ((c.gps - c.gpsfind) > 20 or gps.gnsschange) and gps.state == 1 then
 			print("location fail")
 			if not gps.gnsschange then
@@ -607,27 +698,41 @@ function writegpscmd(ishexstr,dat,ack)
 	end
 end
 
+--[[
+函数名：writegps
+功能  ：向GPS芯片里写命令数据（仅适用于UBLOX GPS模块）
+参数  ：
+		typ：命令类型
+返回值：无
+]]
 function writegps(typ)
 	print("gps writegps",typ)
+	--省电模式
 	if typ == GPS_POWER_SAVE_MODE then
 		--cyclic  update period(10)  search period(60)  acquisition timeout(5)  on time(3)
 		writegpscmd(true,"B562063B2C0001060000009002001027000060EA00000000000003000A002C0100004FC1030086020000FE00000064400100FFE2",true)
 		writegpscmd(true,"B5620611020008012292",true)
 		writegpscmd(true,"B56206090D0000000000FFFF0000000000000721AF",true)
+	--连续定位模式
 	elseif typ == GPS_CONTINUOUS_MODE then
 		writegpscmd(true,"B5620611020008002191",true)
 		writegpscmd(true,"B56206090D0000000000FFFF0000000000000721AF",true)
+	--仅支持北斗定位
 	elseif typ == GPS_SINGLE_BEIDOU_GNSS then
 		--gps.gnsschange = true
 		writegpscmd(true,"B562063E2C0000002005000810000000010101010300010001010308100001000101050003000100010106080E0000000101FE29",true)
+	--仅支持GPS定位
 	elseif typ == GPS_SINGLE_GPS_GNSS then
 		--gps.gnsschange = true
 		writegpscmd(true,"B562063E2C0000002005000810000100010101010300010001010308100000000101050003000100010106080E0001000101FF3D",true)
+	--GPS和北斗混合定位
 	elseif typ == GPS_MIX_GNSS then
 		--gps.gnsschange = true
 		writegpscmd(true,"B562063E2C0000002005000810000100010101010300010001010308100001000101050003000100010106080E0000000101FF4D",true)
+	--NEMA协议版本
 	elseif typ == GPS_NMEA_VERSION then
 		writegpscmd(true,"B5620617140000410002000000000000000000E0000000000000546E",true)
+	--查询PACC
 	elseif typ == QRY_PACC then
 		writegpscmd(true,"B562010100000207",true)
 	else
@@ -635,6 +740,13 @@ function writegps(typ)
 	end
 end
 
+--[[
+函数名：opengps
+功能  ：打开GPS
+参数  ：
+		tag：打开标记，用来表示哪一个应用打开了GPS
+返回值：无
+]]
 function opengps(tag)
 	print("opengps",tag,gps.chiptype)
 	gps.opentags[tag] = 1
@@ -671,6 +783,13 @@ function opengps(tag)
 	sys.dispatch(GPS_STATE_IND,GPS_OPEN_EVT)
 end
 
+--[[
+函数名：closegps
+功能  ：关闭GPS
+参数  ：
+		tag：关闭标记，用来表示哪一个应用关闭了GPS
+返回值：无
+]]
 function closegps(tag)
 	print("closegps",tag)
 	gps.opentags[tag] = 0
@@ -733,6 +852,13 @@ function closegps(tag)
 	stoppaccqry()
 end
 
+--[[
+函数名：getgpslocation
+功能  ：获取GPS经纬度信息
+参数  ：
+		format：经纬度格式，默认为度格式GPS_DEGREES，支持GPS_DEGREES和GPS_DEGREES_MINUTES
+返回值：经纬度信息字符串，例如格式为："E,121.12345,N,31.23456"，如果没有经纬度格式为"E,,N,"
+]]
 function getgpslocation(format)
 	local rstr = (gps.longtyp and gps.longtyp or "E") .. ","
 	local lo,la
@@ -751,22 +877,52 @@ function getgpslocation(format)
 	return rstr
 end
 
+--[[
+函数名：getgpssatenum
+功能  ：获取GPS可见卫星个数
+参数  ：无
+返回值：GPS可见卫星个数
+]]
 function getgpssatenum()
 	return gps.satenum or 0
 end
 
+--[[
+函数名：getgpslocationsatenum
+功能  ：获取GPS定位使用的卫星个数
+参数  ：无
+返回值：GPS定位使用的卫星个数
+]]
 function getgpslocationsatenum()
 	return gps.locationsatenum or 0
 end
 
+--[[
+函数名：getgpsspd
+功能  ：获取速度
+参数  ：无
+返回值：速度
+]]
 function getgpsspd()
 	return gps.spd or 0
 end
 
+--[[
+函数名：getgpscog
+功能  ：获取方向角
+参数  ：无
+返回值：方向角
+]]
 function getgpscog()
 	return gps.cog or 0
 end
 
+--[[
+函数名：getgpssn
+功能  ：获取最强卫星的信噪比
+参数  ：无
+返回值：最强卫星的信噪比
+]]
 function getgpssn()
 	return gps.sn or 0
 end
@@ -819,14 +975,32 @@ function getpara()
 	return t
 end
 
+--[[
+函数名：isfix
+功能  ：检查GPS是否定位成功
+参数  ：无
+返回值：true为定位成功，false为失败
+]]
 function isfix()
 	return gps.state == 1
 end
 
+--[[
+函数名：isopen
+功能  ：检查GPS是否打开
+参数  ：无
+返回值：true为打开，false为关闭
+]]
 function isopen()
 	return gps.open
 end
 
+--[[
+函数名：getaltitude
+功能  ：获取高度
+参数  ：无
+返回值：高度
+]]
 function getaltitude()
 	return gps.haiba or 0
 end
@@ -887,6 +1061,22 @@ function getsatesinfo()
 	end
 end
 
+--[[
+函数名：initgps
+功能  ：配置GPS
+参数  ：
+		ionum：GPS供电的GPIO
+		dir：此参数没用（为了兼容之前的代码，不能去掉），随便传，
+		edge：true表示GPIO输出高电平供电，false或者nil表示GPIO输出低电平供电
+		period：串口读取NEMA数据间隔，单位毫秒，建议1000毫秒读取一次
+		id：串口ID，1表示串口1,2表示串口2
+		baud：串口波特率，例如9600
+		databits：数据位，例如8
+		parity：校验位，例如uart.PAR_NONE
+		stopbits：停止位，例如uart.STOP_1
+		apgspwronupd：是否允许开机就执行AGPS功能
+返回值：无
+]]
 function initgps(ionum,dir,edge,period,id,baud,databits,parity,stopbits,apgspwronupd)
 	gps.open = false
 	gps.wrquene = {}
@@ -923,7 +1113,7 @@ function initgps(ionum,dir,edge,period,id,baud,databits,parity,stopbits,apgspwro
 	gps.filtertime = 5
 	gps.timezone = nil
 	gps.spdtyp = GPS_KILOMETER_SPD
-	gps.chiptype = GPS_UBLOX
+	gps.chiptype = GPS_MTK
 	gps.opentags = {}
 	gps.isagpspwronupd = (apgspwronupd == nil) and true or apgspwronupd
 
@@ -954,16 +1144,37 @@ function initgps(ionum,dir,edge,period,id,baud,databits,parity,stopbits,apgspwro
 	end
 end
 
+--[[
+函数名：setgpsfilter
+功能  ：设置GPS定位成功过滤时间
+参数  ：
+		secs：过滤的秒数，例如5，表示GPS定位成功后，扔掉前5秒的定位信息
+返回值：无
+]]
 function setgpsfilter(secs)
 	if secs >= 0 then
 		gps.filtertime = secs
 	end
 end
 
+--[[
+函数名：settimezone
+功能  ：设置软件系统的时区，调用此接口后，GPS获取到时间后，会设置对应时区的系统时间
+参数  ：
+		zone：目前支持GPS_GREENWICH_TIME、GPS_BEIJING_TIME、GPS_VIETNAM_TIME
+返回值：无
+]]
 function settimezone(zone)
 	gps.timezone = zone
 end
 
+--[[
+函数名：setspdtyp
+功能  ：设置速度类型
+参数  ：
+		typ：目前支持GPS_KNOT_SPD、GPS_KILOMETER_SPD
+返回值：无
+]]
 function setspdtyp(typ)
 	gps.spdtyp = typ
 end
