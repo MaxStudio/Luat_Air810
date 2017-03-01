@@ -7,8 +7,8 @@
 
 module(...,package.seeall)
 
-local RST_SCMWD_PIN = pio.P0_6
-local WATCHDOG_PIN = pio.P0_5
+local RST_SCMWD_PIN = pio.P1_0
+local WATCHDOG_PIN = pio.P0_20
 
 local scm_active,get_scm_cnt = true,20
 local testcnt,testing = 0
