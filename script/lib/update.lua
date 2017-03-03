@@ -1,4 +1,12 @@
--- 远程升级
+--[[
+模块名称：远程升级
+模块功能：只在每次开机或者重启时，连接升级服务器，如果服务器存在新版本，lib和应用脚本远程升级
+请先参考：http://www.openluat.com/forum.php?mod=viewthread&tid=2397&extra=page%3D1
+然后再阅读本模块
+模块最后修改时间：2017.02.09
+]]
+
+--定义模块,导入依赖库
 local base = _G
 local string = require"string"
 local io = require"io"
@@ -10,12 +18,18 @@ local misc = require"misc"
 local common = require"common"
 module(...)
 
+--加载常用的全局函数至本地
 local print = base.print
 local send = link.send
 local dispatch = sys.dispatch
+
+--updmode: 远程升级模式，可在main.lua中，配置UPDMODE变量，未配置的话默认为0
+--0：自动升级模式，脚本更新后，自动重启完成升级
+--1：用户自定义模式，如果后台有新版本，会产生一个消息，由用户应用脚本决定是否升级
 local updmode,updsuc = base.UPDMODE or 0
 
---通讯协议,服务器,后台
+--PROTOCOL：传输层协议，只支持TCP和UDP
+--SERVER,PORT为服务器地址和端口
 local PROTOCOL,SERVER,PORT = "UDP","ota.airm2m.com",2234
 --升级包位置
 local UPDATEPACK = "/luazip/update.bin"
@@ -26,12 +40,22 @@ local CMD_GET_TIMEOUT = 10000
 local ERROR_PACK_TIMEOUT = 10000
 -- 每次GET命令重试次数
 local CMD_GET_RETRY_TIMES = 3
-
+--socket id
 local lid
+--状态机状态
+--IDLE：空闲状态
+--CHECK：“查询服务器是否有新版本”状态
+--UPDATE：升级中状态
 local state = "IDLE"
+--projectid是项目标识的id,服务器自己维护
+--total是包的个数，例如升级文件为10235字节，则total=(int)((10235+1022)/1023)=11;升级文件为10230字节，则total=(int)((10230+1022)/1023)=10
+--last是最后一个包的字节数，例如升级文件为10235字节，则last=10235%1023=5;升级文件为10230字节，则last=1023
 local projectid,total,last
+--packid：当前包的索引
+--getretries：获取每个包已经重试的次数
 local packid,getretries = 1,1
 
+--时区，本模块支持设置系统时间功能，但是需要服务器返回当前时间
 timezone = nil
 BEIJING_TIME = 8
 GREENWICH_TIME = 0
@@ -40,8 +64,17 @@ local function print(...)
 	base.print("update",...)
 end
 
+--[[
+函数名：save
+功能  ：保存数据包到升级文件中
+参数  ：
+		data：数据包
+返回值：无
+]]
 local function save(data)
+	--如果是第一个包，则覆盖保存；否则，追加保存
 	local mode = packid == 1 and "wb" or "a+"
+	--打开文件
 	local f = io.open(UPDATEPACK,mode)
 
 	if f == nil then
@@ -57,23 +90,30 @@ local function save(data)
 	f:close()
 end
 
+--[[
+函数名：retry
+功能  ：升级过程中的重试动作
+参数  ：
+		param：如果为STOP，则停止重试；否则，执行重试
+返回值：无
+]]
 local function retry(param)
 	-- 升级状态已结束直接退出
 	if state ~= "UPDATE" and state ~= "CHECK" then
 		return
 	end
-
+	--停止重试
 	if param == "STOP" then
 		getretries = 0
 		sys.timer_stop(retry)
 		return
 	end
-
+	--包内容错误，ERROR_PACK_TIMEOUT毫秒后重试当前包
 	if param == "ERROR_PACK" then
 		sys.timer_start(retry,ERROR_PACK_TIMEOUT)
 		return
 	end
-
+	--重试次数加1
 	getretries = getretries + 1
 	if getretries < CMD_GET_RETRY_TIMES then
 		-- 未达重试次数,继续尝试获取升级包
@@ -88,11 +128,26 @@ local function retry(param)
 	end
 end
 
+--[[
+函数名：reqget
+功能  ：发送“获取第index包的请求数据”到服务器
+参数  ：
+		index：包的索引，从1开始
+返回值：无
+]]
 function reqget(index)
 	send(lid,string.format("Get%d,%d",index,projectid))
+	--启动“CMD_GET_TIMEOUT毫秒后重试”定时器
 	sys.timer_start(retry,CMD_GET_TIMEOUT)
 end
 
+--[[
+函数名：getpack
+功能  ：解析从服务器收到的一包数据
+参数  ：
+		data：包内容
+返回值：无
+]]
 local function getpack(data)
 	-- 判断包长度是否正确
 	local len = string.len(data)
@@ -115,7 +170,7 @@ local function getpack(data)
 
 	-- 保存升级包
 	save(string.sub(data,3,-1))
-
+	--如果是用户自定义模式，产生一个内部消息UP_PROGRESS_IND，表示升级进度
 	if updmode == 1 or updmode == 2 then
 		dispatch("UP_EVT","UP_PROGRESS_IND",packid*100/total)
 	end
@@ -129,21 +184,41 @@ local function getpack(data)
 	end
 end
 
+--[[
+函数名：upbegin
+功能  ：解析服务器下发的新版本信息
+参数  ：
+		data：新版本信息
+返回值：无
+]]
 function upbegin(data)
 	local p1,p2,p3 = string.match(data,"LUAUPDATE,(%d+),(%d+),(%d+)")
+	--后台维护的项目id，包的个数，最后一包的字节数
 	p1,p2,p3 = base.tonumber(p1),base.tonumber(p2),base.tonumber(p3)
+	--格式正确
 	if p1 and p2 and p3 then
 		projectid,total,last = p1,p2,p3
+		--重试次数清0
 		getretries = 0
+		--设置为升级中状态
 		state = "UPDATE"
+		--从第1个升级包开始
 		packid = 1
 		sys.removegpsdat()
 		reqget(packid)
+	--格式错误，升级结束
 	else
 		upend(false)
 	end
 end
 
+--[[
+函数名：upend
+功能  ：升级结束
+参数  ：
+		succ：结果，true为成功，其余为失败
+返回值：无
+]]
 function upend(succ)
 	updsuc = succ
 	if not succ then os.remove(UPDATEPACK) end
@@ -163,48 +238,90 @@ function upend(succ)
 	end
 end
 
+--[[
+函数名：reqcheck
+功能  ：发送“检查服务器是否有新版本”请求数据到服务器
+参数  ：无
+返回值：无
+]]
 function reqcheck()
 	state = "CHECK"
 	send(lid,string.format("%s,%s,%s",misc.getimei(),base.PROJECT,base.VERSION))
 	sys.timer_start(retry,CMD_GET_TIMEOUT)
 end
 
+--[[
+函数名：nofity
+功能  ：socket状态的处理函数
+参数  ：
+        id：socket id，程序可以忽略不处理
+        evt：消息事件类型
+		val： 消息事件参数
+返回值：无
+]]
 local function nofity(id,evt,val)
 	print("notify",evt,val)
 	if evt == "CONNECT" then
+		--连接成功
 		if val == "CONNECT OK" then
 			reqcheck()
+		--连接失败
 		else
 			upend(false)
 		end
+	--连接被动断开
 	elseif evt == "STATE" and val == "CLOSED" then
 		 -- 服务器断开链接 直接判定升级失败
 		upend(false)
 	end
 end
 
+--服务器下发的新版本信息，自定义模式中使用
 local chkrspdat
+--[[
+函数名：upselcb
+功能  ：自定义模式下，用户选择是否升级的回调处理
+参数  ：
+        sel：是否允许升级，true为允许，其余为不允许
+返回值：无
+]]
 local upselcb = function(sel)
+	--允许升级
 	if sel then
 		upbegin(chkrspdat)
+	--不允许升级
 	else
 		link.close(lid)
 		lid = nil
 	end
 end
 
+--[[
+函数名：recv
+功能  ：socket接收数据的处理函数
+参数  ：
+        id ：socket id，程序可以忽略不处理
+        data：接收到的数据
+返回值：无
+]]
 local function recv(id,data)
+	--停止重试定时器
 	sys.timer_stop(retry)
+	--“查询服务器是否有新版本”状态
 	if state == "CHECK" then
+		--服务器上有新版本
 		if string.find(data,"LUAUPDATE") == 1 then
+			--自动升级模式
 			if updmode == 0 then
 				upbegin(data)
+			--自定义升级模式
 			elseif updmode == 1 or updmode == 2 then
 				chkrspdat = data
 				dispatch("UP_EVT","NEW_VER_IND",upselcb)
 			else
 				upend(false)
 			end
+		--没有新版本
 		else
 			upend(false)
 		end
@@ -230,6 +347,13 @@ local function recv(id,data)
 	end
 end
 
+--[[
+函数名：settimezone
+功能  ：设置系统时间的时区
+参数  ：
+        zone ：时区，目前仅支持格林威治时间和北京时间，BEIJING_TIME和GREENWICH_TIME
+返回值：无
+]]
 function settimezone(zone)
 	timezone = zone
 end
