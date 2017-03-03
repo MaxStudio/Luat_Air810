@@ -1,4 +1,10 @@
--- 其他配置
+--[[
+模块名称：杂项管理
+模块功能：序列号、IMEI、底层软件版本号、时钟、是否校准、飞行模式、查询电池电量等功能
+模块最后修改时间：2017.02.14
+]]
+
+--定义模块,导入依赖库
 local string = require"string"
 local ril = require"ril"
 local sys = require"sys"
@@ -7,6 +13,7 @@ local os = require"os"
 local io = require"io"
 module(...)
 
+--加载常用的全局函数至本地
 local tonumber = base.tonumber
 local tostring = base.tostring
 local print = base.print
@@ -19,11 +26,23 @@ local imei
 local CCLK_QUERY_TIMER_PERIOD = 60*1000
 local clk,calib,cbfunc,audflg={},false
 
+--[[
+函数名：rsp
+功能  ：本功能模块内“通过虚拟串口发送到底层core软件的AT命令”的应答处理
+参数  ：
+		cmd：此应答对应的AT命令
+		success：AT命令执行结果，true或者false
+		response：AT命令的应答中的执行结果字符串
+		intermediate：AT命令的应答中的中间信息
+返回值：无
+]]
 local function rsp(cmd,success,response,intermediate)
 	local prefix = smatch(cmd,"AT(%+%u+)")
+	--查询序列号
 	if cmd == "AT+WISN?" then
 		if intermediate then sn = smatch(intermediate,"+WISN:%s*(.+)") end
 		if not snrdy then sys.dispatch("SN_READY") snrdy = true end
+	--查询底层软件版本号
 	elseif cmd == "AT+VER" then
 		if intermediate then
 			ver = smatch(intermediate,"+VER:%s*(.+)")
@@ -62,6 +81,14 @@ local function rsp(cmd,success,response,intermediate)
 	end
 end
 
+--[[
+函数名：setclock
+功能  ：设置系统时间
+参数  ：
+		t：系统时间表，格式参考：{year=2017,month=2,day=14,hour=14,min=2,sec=58}
+		rspfunc：设置系统时间后的用户自定义回调函数
+返回值：无
+]]
 function setclock(t,rspfunc)
 	if t.year - 2000 > 38 then
 		if rspfunc then rspfunc() end
@@ -71,6 +98,12 @@ function setclock(t,rspfunc)
 	req(string.format("AT+CCLK=\"%02d/%02d/%02d,%02d:%02d:%02d\"",string.sub(t.year,3,4),t.month,t.day,t.hour,t.min,t.sec),nil,rsp)
 end
 
+--[[
+函数名：getclockstr
+功能  ：获取系统时间字符串
+参数  ：无
+返回值：系统时间字符串，格式为YYMMDDhhmmss，例如170214141602，17年2月14日14时16分02秒
+]]
 function getclockstr()
 	clk = os.date("*t")
 	clk.year = string.sub(clk.year,3,4)
@@ -103,14 +136,33 @@ function setclk(t,precision,rspfunc)
 	sys.dispatch("SET_CLK_IND")
 end
 
+--[[
+函数名：getweek
+功能  ：获取星期
+参数  ：无
+返回值：星期，number类型，1-7分别对应周一到周日
+]]
 function getweek()
 	clk = os.date("*t")
 	return ((clk.wday == 1) and 7 or (clk.wday - 1))
 end
+
+--[[
+函数名：getclock
+功能  ：获取系统时间表
+参数  ：无
+返回值：table类型的时间，例如{year=2017,month=2,day=14,hour=14,min=19,sec=23}
+]]
 function getclock()
 	return os.date("*t")
 end
 
+--[[
+函数名：startclktimer
+功能  ：选择性的启动整分时钟通知定时器
+参数  ：无
+返回值：无
+]]
 function startclktimer()
 	sys.dispatch("CLOCK_IND")
 	print('CLOCK_IND',os.date("*t").sec)
@@ -120,6 +172,13 @@ end
 function chingeclktimer()
 	sys.timer_start(startclktimer,(60-os.date("*t").sec)*1000)
 end
+
+--[[
+函数名：getsn
+功能  ：获取序列号
+参数  ：无
+返回值：序列号，如果未获取到返回""
+]]
 function getsn()
 	return sn or ""
 end
@@ -172,6 +231,12 @@ function set(typ,val,cb)
 	end
 end
 
+--[[
+函数名：getcalib
+功能  ：获取是否校准标志
+参数  ：无
+返回值：true为校准，其余为没校准
+]]
 function getcalib()
 	return calib
 end
@@ -180,6 +245,7 @@ function getaudflg()
 	return audflg
 end
 
+--注册以下AT命令的应答处理函数
 ril.regrsp("+ATWMFT",rsp)
 ril.regrsp("+WISN",rsp)
 ril.regrsp("+VER",rsp)
