@@ -1,3 +1,10 @@
+--[[
+模块名称：数据链路、SOCKET管理
+模块功能：数据网络激活，SOCKET的创建、连接、数据收发、状态维护
+模块最后修改时间：2017.02.14
+]]
+
+--定义模块,导入依赖库
 local base = _G
 local string = require"string"
 local table = require"table"
@@ -9,29 +16,50 @@ local sim = require"sim"
 local socket = require"tcpipsock"
 module("link",package.seeall)
 
+--加载常用的全局函数至本地
 local print = base.print
 local pairs = base.pairs
 local tonumber = base.tonumber
 local tostring = base.tostring
 local req = ril.request
 local extapn
--- constant
+--最大socket id，从0开始，所以同时支持的socket连接数是8个
 local MAXLINKS = 7 -- id 0-7
-local IPSTART_INTVL = 10000 --IP环境建立失败时间隔10秒重连
+--IP环境建立失败时间隔10秒重连
+local IPSTART_INTVL = 10000
 
--- local var
+--socket连接表
 local linklist = {}
+--ipstatus：IP环境状态
+--sckconning：是否连接数据网络
 local ipstatus,sckconning = "IP INITIAL"
+--GPRS数据网络附着状态，"1"附着，其余未附着
 local cgatt
+--apn 用户名
 local apn = "CMNET"
+--socket发起连接请求后，如果在connectnoretinterval毫秒后没有任何应答，如果connectnoretrestart为true，则会重启软件
 local connectnoretrestart = false
 local connectnoretinterval
 
+--[[
+函数名：setapn
+功能  ：设置apn、用户名和密码
+参数  ：
+		a：apn
+返回值：无
+]]
 function setapn(a)
 	apn = a
 	extapn=true
 end
 
+--[[
+函数名：connectingtimerfunc
+功能  ：socket连接超时没有应答处理函数
+参数  ：
+		id：socket id
+返回值：无
+]]
 local function connectingtimerfunc(id)
 	print("connectingtimerfunc",id,connectnoretrestart)
 	if connectnoretrestart then
@@ -39,11 +67,25 @@ local function connectingtimerfunc(id)
 	end
 end
 
+--[[
+函数名：stopconnectingtimer
+功能  ：关闭“socket连接超时没有应答”定时器
+参数  ：
+		id：socket id
+返回值：无
+]]
 local function stopconnectingtimer(id)
 	print("stopconnectingtimer",id)
 	sys.timer_stop(connectingtimerfunc,id)
 end
 
+--[[
+函数名：startconnectingtimer
+功能  ：开启“socket连接超时没有应答”定时器
+参数  ：
+		id：socket id
+返回值：无
+]]
 local function startconnectingtimer(id)
 	print("startconnectingtimer",id,connectnoretrestart,connectnoretinterval)
 	if id and connectnoretrestart and connectnoretinterval and connectnoretinterval > 0 then
@@ -51,11 +93,25 @@ local function startconnectingtimer(id)
 	end
 end
 
+--[[
+函数名：setconnectnoretrestart
+功能  ：设置“socket连接超时没有应答”的控制参数
+参数  ：
+		flag：功能开关，true或者false
+		interval：超时时间，单位毫秒
+返回值：无
+]]
 function setconnectnoretrestart(flag,interval)
 	connectnoretrestart = flag
 	connectnoretinterval = interval
 end
 
+--[[
+函数名：setupIP
+功能  ：发送激活IP网络请求
+参数  ：无
+返回值：无
+]]
 local function setupIP()
 	print("link.setupIP:",ipstatus,cgatt)
 	if ipstatus ~= "IP INITIAL" then
@@ -70,6 +126,12 @@ local function setupIP()
 	socket.pdp_activate(apn,"","")
 end
 
+--[[
+函数名：emptylink
+功能  ：获取可用的socket id
+参数  ：无
+返回值：可用的socket id，如果没有可用的返回nil
+]]
 local function emptylink()
 	for i = 0,MAXLINKS do
 		if linklist[i] == nil then
@@ -80,13 +142,22 @@ local function emptylink()
 	return nil
 end
 
+--[[
+函数名：validaction
+功能  ：检查某个socket id的动作是否有效
+参数  ：
+		id：socket id
+		action：动作
+返回值：true有效，false无效
+]]
 local function validaction(id,action)
 	if linklist[id] == nil then
 		print("link.validaction:id nil",id)
 		return false
 	end
 
-	if action.."ING" == linklist[id].state then -- 同一个状态不重复执行
+	--同一个状态不重复执行
+	if action.."ING" == linklist[id].state then
 		print("link.validaction:",action,linklist[id].state)
 		return false
 	end
@@ -105,7 +176,17 @@ local function validaction(id,action)
 	return true
 end
 
+--[[
+函数名：openid
+功能  ：保存socket的参数信息
+参数  ：
+		id：socket id
+		notify：socket状态处理函数
+		recv：socket数据接收处理函数
+返回值：true成功，false失败
+]]
 function openid(id,notify,recv)
+	--id越界或者id的socket已经存在
 	if id > MAXLINKS or linklist[id] ~= nil then
 		print("openid:error",id)
 		return false
@@ -127,6 +208,15 @@ function openid(id,notify,recv)
 	return true
 end
 
+--[[
+函数名：open
+功能  ：创建一个socket
+参数  ：
+		notify：socket状态处理函数
+		recv：socket数据接收处理函数
+		tag：socket创建标记
+返回值：number类型的id表示成功，nil表示失败
+]]
 function open(notify,recv)
 	local id = emptylink()
 
@@ -139,11 +229,19 @@ function open(notify,recv)
 	return id
 end
 
+--[[
+函数名：close
+功能  ：关闭一个socket（会清除socket的所有参数信息）
+参数  ：
+		id：socket id
+返回值：true成功，false失败
+]]
 function close(id)
+	--检查是否允许关闭
 	if validaction(id,"CLOSE") == false then
 		return false
 	end
-
+	--正在关闭
 	linklist[id].state = "CLOSING"
 
 	socket.sock_close(id,1)
@@ -151,13 +249,35 @@ function close(id)
 	return true
 end
 
+--[[
+函数名：asyncLocalEvent
+功能  ：socket异步通知消息的处理函数
+参数  ：
+		msg：异步通知消息"LINK_ASYNC_LOCAL_EVENT"
+		cbfunc：消息回调
+		id：socket id
+		val：通知消息的参数
+返回值：true成功，false失败
+]]
 function asyncLocalEvent(msg,cbfunc,id,val)
 	cbfunc(id,val)
 end
 
+--注册消息LINK_ASYNC_LOCAL_EVENT的处理函数
 sys.regapp(asyncLocalEvent,"LINK_ASYNC_LOCAL_EVENT")
 
+--[[
+函数名：connect
+功能  ：socket连接服务器请求
+参数  ：
+		id：socket id
+		protocol：传输层协议，TCP或者UDP
+		address：服务器地址
+		port：服务器端口
+返回值：请求成功同步返回true，否则false；
+]]
 function connect(id,protocol,address,port)
+	--不允许发起连接动作
 	if validaction(id,"CONNECT") == false or linklist[id].state == "CONNECTED" then
 		return false
 	end
@@ -185,11 +305,19 @@ function connect(id,protocol,address,port)
 	return true
 end
 
+--[[
+函数名：disconnect
+功能  ：断开一个socket（不会清除socket的所有参数信息）
+参数  ：
+		id：socket id
+返回值：true成功，false失败
+]]
 function disconnect(id)
+	--不允许断开动作
 	if validaction(id,"DISCONNECT") == false then
 		return false
 	end
-
+	--如果此socket id对应的连接还在等待中，并没有真正发起
 	if linklist[id].pending then
 		linklist[id].pending = nil
 		if ipstatus ~= "IP STATUS" and ipstatus ~= "IP PROCESSING" and linklist[id].state == "CONNECTING" then
@@ -207,7 +335,16 @@ function disconnect(id)
 	return true
 end
 
+--[[
+函数名：send
+功能  ：发送数据到服务器
+参数  ：
+		id：socket id
+		data：要发送的数据
+返回值：true成功，false失败
+]]
 function send(id,data)
+	--socket无效，或者socket未连接
 	if linklist[id] == nil or linklist[id].state ~= "CONNECTED" then
 		print("link.send:error",id)
 		return false
@@ -224,17 +361,32 @@ function send(id,data)
 	return true
 end
 
+--[[
+函数名：getstate
+功能  ：获取一个socket的连接状态
+参数  ：
+		id：socket id
+返回值：socket有效则返回连接状态，否则返回"NIL LINK"
+]]
 function getstate(id)
 	return linklist[id] and linklist[id].state or "NIL LINK"
 end
 
+--[[
+函数名：recv
+功能  ：某个socket的数据接收处理函数
+参数  ：
+		id：socket id
+		data：接收到的数据内容
+返回值：无
+]]
 local function recv(id,data)
 	print("link.recv",id,string.len(data)>200 and "" or data)
 	if not id or not linklist[id] then
 		print("link.recv:error",id)
 		return
 	end
-
+	--调用socket id对应的用户注册的数据接收处理函数
 	if linklist[id].recv then
 		linklist[id].recv(id,data)
 	else
@@ -246,16 +398,35 @@ function linkstatus(data)
 
 end
 
+--[[
+函数名：sendcnf
+功能  ：socket数据发送结果确认
+参数  ：
+		id：socket id
+		result：发送结果字符串
+返回值：无
+]]
 local function sendcnf(id,result)
 	if not id or not linklist[id] then print("link.sendcnf:error",id) return end
 	local str = string.match(result,"([%u ])")
+	--发送失败
 	if str == "TCP ERROR" or str == "UDP ERROR" or str == "ERROR" then
 		linklist[id].state = result
 	end
+	--调用用户注册的状态处理函数
 	linklist[id].notify(id,"SEND",result)
 end
 
+--[[
+函数名：closecnf
+功能  ：socket关闭结果确认
+参数  ：
+		id：socket id
+		result：关闭结果字符串
+返回值：无
+]]
 function closecnf(id,result)
+	--socket id无效
 	if not id or not linklist[id] then
 		print("link.closecnf:error",id)
 		return
@@ -279,14 +450,23 @@ function closecnf(id,result)
 	end
 end
 
--- 状态urc上报,有两种情况:cipstart返回或者链接状态变化
+--[[
+函数名：statusind
+功能  ：socket状态转化处理
+参数  ：
+		id：socket id
+		state：状态字符串
+返回值：无
+]]
 function statusind(id,state)
+	--socket无效
 	if linklist[id] == nil then
 		print("link.statusind:nil id",id)
 		return
 	end
 
-	if state == "SEND FAIL" then -- 快发失败的提示会变成URC
+         -- 快发失败的提示会变成URC
+	if state == "SEND FAIL" then
 		if linklist[id].state == "CONNECTED" then
 			linklist[id].notify(id,"SEND",state)
 		else
@@ -296,10 +476,12 @@ function statusind(id,state)
 	end
 
 	local evt
-
+	--socket如果处于正在连接的状态，或者返回了连接成功的状态通知
 	if linklist[id].state == "CONNECTING" or state == "CONNECT OK" then
+		--连接类型的事件
 		evt = "CONNECT"
 	else
+		--状态类型的事件
 		evt = "STATE"
 	end
 
@@ -310,10 +492,17 @@ function statusind(id,state)
 		linklist[id].state = "CLOSED"
 	end
 
+	--调用用户注册的状态处理函数
 	linklist[id].notify(id,evt,state)
 	stopconnectingtimer(id)
 end
 
+--[[
+函数名：connpend
+功能  ：执行因IP网络未准备好被挂起的socket连接请求
+参数  ：无
+返回值：无
+]]
 local function connpend()
 	for k,v in pairs(linklist) do
 		print("link.connpend",v.pending)
@@ -331,6 +520,13 @@ local function connpend()
 	end
 end
 
+--[[
+函数名：setIPStatus
+功能  ：设置IP网络状态
+参数  ：
+		status：IP网络状态
+返回值：无
+]]
 local function setIPStatus(status)
 	print("ipstatus:",status,ipstatus)
 
@@ -348,6 +544,12 @@ local function setIPStatus(status)
 	end
 end
 
+--[[
+函数名：closeall
+功能  ：关闭全部IP网络
+参数  ：无
+返回值：无
+]]
 local function closeall()
 	local i
 	for i = 0,MAXLINKS do
@@ -364,6 +566,12 @@ local function closeall()
 	end
 end
 
+--[[
+函数名：shut
+功能  ：关闭IP网络
+参数  ：无
+返回值：无
+]]
 function shut()
 	closeall()
 	socket.pdp_deactivate()
@@ -436,6 +644,16 @@ sys.regmsg("sock",ntfy)
 local QUERYTIME = 2000
 local querycgatt
 
+--[[
+函数名：cgattrsp
+功能  ：查询GPRS数据网络附着状态的应答处理
+参数  ：
+		cmd：此应答对应的AT命令
+		success：AT命令执行结果，true或者false
+		response：AT命令的应答中的执行结果字符串
+		intermediate：AT命令的应答中的中间信息
+返回值：无
+]]
 local function cgattrsp(cmd,success,response,intermediate)
 	print("syy cgattrsp",intermediate)
 	if intermediate == "+CGATT: 1" then
@@ -463,11 +681,24 @@ local function cgattrsp(cmd,success,response,intermediate)
 	end
 end
 
+--[[
+函数名：querycgatt
+功能  ：查询GPRS数据网络附着状态
+参数  ：无
+返回值：无
+]]
 querycgatt = function()
 	req("AT+CGATT?",nil,cgattrsp,nil,{skip=true})
 end
 
 function setquicksend() end
+
+--[[
+函数名：netmsg
+功能  ：GSM网络注册状态发生变化的处理
+参数  ：无
+返回值：true
+]]
 local function netmsg(id,data)
 	print("syy netmsg",data)
 	if data == "REGISTERED" then
@@ -482,6 +713,8 @@ local function netmsg(id,data)
 	end
 	return true
 end
+
+--sim卡的默认apn表
 local apntable =
 {
 	["46000"] = "CMNET",
@@ -492,6 +725,13 @@ local apntable =
 	["46006"] = "UNINET",
 }
 
+--[[
+函数名：proc
+功能  ：本模块注册的内部消息的处理函数
+参数  ：
+		id：内部消息id
+返回值：true
+]]
 local function proc(id)
 	if not extapn then
 		apn=apntable[sim.getmcc()..sim.getmnc()] or "CMNET"
@@ -511,5 +751,6 @@ function getipstatus()
 	return ipstatus
 end
 
+--注册本模块关注的内部消息的处理函数
 sys.regapp(proc,"IMSI_READY")
 sys.regapp(netmsg,"NET_STATE_CHANGED")
