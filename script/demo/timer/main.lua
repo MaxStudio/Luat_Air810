@@ -1,4 +1,4 @@
-PROJECT = "TIMER"
+PROJECT = "timer-demo"
 VERSION = "1.0.0"
 require"sys"
 require"test"
