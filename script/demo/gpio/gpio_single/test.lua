@@ -1,0 +1,79 @@
+module(...,package.seeall)
+
+--[[
+函数名：print
+功能  ：打印接口，此文件中的所有打印都会加上test前缀
+参数  ：无
+返回值：无
+]]
+local function print(...)
+	_G.print("test",...)
+end
+
+-------------------------PIN31测试开始-------------------------
+local pin31flg = true
+--[[
+函数名：pin31set
+功能  ：设置PIN31引脚的输出电平，1秒反转一次
+参数  ：无
+返回值：无
+]]
+local function pin31set()
+	pins.set(pin31flg,pins.PIN31)
+	pin31flg = not pin31flg
+	print("pin31set",pin31flg and "low" or "high")
+end
+--启动1秒的循环定时器，设置PIN31引脚的输出电平
+sys.timer_loop_start(pin31set,1000)
+-------------------------PIN31测试结束-------------------------
+
+
+-------------------------PIN32测试开始-------------------------
+local pin32flg = true
+--[[
+函数名：pin32set
+功能  ：设置PIN32引脚的输出电平，1秒反转一次
+参数  ：无
+返回值：无
+]]
+local function pin32set()
+	pins.set(pin32flg,pins.PIN32)
+	pin32flg = not pin32flg
+	print("pin32set",pin32flg and "low" or "high")
+end
+--启动1秒的循环定时器，设置PIN32引脚的输出电平
+sys.timer_loop_start(pin32set,1000)
+-------------------------PIN32测试结束-------------------------
+
+
+-------------------------PIN25测试开始-------------------------
+--[[
+函数名：ind
+功能  ：设置PIN25引脚逻辑中断处理
+参数  ：
+        e：消息，"PIN_PIN25_IND"
+		v：如果为true，表示高电平中断；false表示低电平中断
+返回值：无
+]]
+local function ind(e,v)
+	print("ind",e,v)
+end
+--注册PIN25引脚逻辑中断的处理函数
+sys.regapp(ind,"PIN_"..pins.PIN25.name.."_IND")
+-------------------------PIN25测试结束-------------------------
+
+
+-------------------------PIN38测试开始-------------------------
+--[[
+函数名：pin38get
+功能  ：读取PIN38引脚的输入电平
+参数  ：无
+返回值：无
+]]
+local function pin38get()
+	local v = pins.get(pins.PIN38)
+	print("pin38get",v and "low" or "high")
+end
+--启动1秒的循环定时器，读取PIN38引脚的输入电平
+sys.timer_loop_start(pin38get,1000)
+-------------------------PIN38测试结束-------------------------
