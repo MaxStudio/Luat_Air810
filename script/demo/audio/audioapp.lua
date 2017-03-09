@@ -10,8 +10,7 @@ module(...,package.seeall)
 --PWRON：开机铃声
 --CALL：来电铃声
 --SMS：新短信铃声
---TTS：TTS播放
-PWRON,CALL,SMS,TTS = 0,1,2,3
+PWRON,CALL,SMS = 0,1,2
 
 --styp：当前播放的音频类型
 --spath：当前播放的音频文件路径
@@ -55,7 +54,7 @@ local function playbegin(typ,path,vol,cb,dup,duprd)
     end
 	
 	--调用播放接口成功
-	if (typ==TTS and audio.playtts(path)) or (typ~=TTS and audio.play(path,dup and (not duprd or duprd==0))) then
+	if audio.play(path,dup and (not duprd or duprd==0)) then
 		return true
 	--调用播放接口失败
 	else
@@ -117,7 +116,7 @@ function stop()
 	sys.timer_stop_all(play)
 	--停止音频播放
 	audio.stop()
-	if typ==TTS then audio.stoptts() return end
+
 	return true
 end
 
@@ -129,15 +128,12 @@ end
 ]]
 local function playend()
 	print("playend",sdup,sduprd)
-	if styp==TTS and not sdup then audio.stoptts() end
+
 	--需要重复播放
 	if sdup then
 		--存在重复播放间隔
 		if sduprd then
 			sys.timer_start(play,sduprd,styp,spath,svol,scb,sdup,sduprd)
-		--不存在重复播放间隔
-		elseif styp==TTS then
-			play(styp,spath,svol,scb,sdup,sduprd)
 		end
 	--不需要重复播放
 	else
@@ -155,21 +151,10 @@ end
 ]]
 local function playerr()
 	print("playerr")
-	if styp==TTS then audio.stoptts() end
+
 	--如果正在播放的音频有回调函数，则执行回调，传入参数1
 	if scb then scb(1) end
 	styp,spath,svol,scb,sdup,sduprd,spending = nil
-end
-
---[[
-函数名：ttstopind
-功能  ：调用audio.stoptts()接口后，tts停止播放后的消息处理函数
-参数  ：无
-返回值：无
-]]
-local function ttstopind()
-	print("ttstopind",spending)
-	if spending then playbegin(styp,spath,svol,scb,sdup,sduprd) end
 end
 
 --音频播放消息处理函数表
@@ -177,7 +162,6 @@ local procer =
 {
 	AUDIO_PLAY_END_IND = playend,
 	AUDIO_PLAY_ERROR_IND = playerr,
-	TTS_STOP_IND = ttstopind,
 }
 --注册音频播放消息处理函数
 sys.regapp(procer)
