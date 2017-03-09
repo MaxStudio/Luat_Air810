@@ -89,8 +89,6 @@ GPS_KNOT_SPD = 0
 --速度单位为公里每小时
 GPS_KILOMETER_SPD = 1
 
-GPS_RDA = 0
-GPS_UBLOX = 1
 GPS_MTK = 2
 
 local nogpschipcnt,hdop,paccflg,paccqry,pacc = 5
@@ -538,17 +536,11 @@ end
 local function read(str)
 	local strgps = ""
 	local gpsreadloop = true
-	if gps.open and gps.chiptype ~= GPS_MTK then
-		sys.timer_start(read,gps.period)
-	end
 
 	c.gps = c.gps + 1
 	while gpsreadloop do
-		if gps.chiptype ~= GPS_MTK then
-			strgps = writeack(uart.read(gps.uartid, "*l", 0))
-		else
-			strgps = str
-		end
+		strgps = str
+
 		if slen(strgps) == 0 then
 			if not c.nogps and c.hasgps == 0 and c.gps >= nogpschipcnt then
 				sys.dispatch(GPS_STATE_IND,GPS_NO_CHIP_EVT)
@@ -598,9 +590,8 @@ local function read(str)
 			gps.filterbgn = nil
 			gps.spd = 0			
 		end
-		if gps.chiptype == GPS_MTK then
-			gpsreadloop = false
-		end
+
+		gpsreadloop = false
 	end
 end
 
@@ -754,31 +745,11 @@ function opengps(tag)
 		print("gps has open")
 		return
 	end
-	if gps.chiptype ~= GPS_MTK then
-		pm.wake("gps")
-	end
+
 	gps.open = true
-	if gps.chiptype ~= GPS_MTK then
-		openuart()
-	end
 	gps.filterbgn = nil
-	if gps.chiptype == GPS_UBLOX then
-		if gps.io then
-			if gps.edge then
-				pio.pin.sethigh(gps.io)
-			else
-				pio.pin.setlow(gps.io)
-			end
-		else
-			pmd.ldoset(7,pmd.LDO_VCAM)
-		end		
-		gps.gnsschange = false
-		--writegps(GPS_NMEA_VERSION)
-	elseif gps.chiptype == GPS_RDA then
-		gpscore.open()
-	elseif gps.chiptype == GPS_MTK then
-		gpscore.open(gpscore.WORK_RAW_MODE)
-	end
+	gpscore.open(gpscore.WORK_RAW_MODE)
+
 	print("gps open")
 	sys.dispatch(GPS_STATE_IND,GPS_OPEN_EVT)
 end
@@ -812,17 +783,9 @@ function closegps(tag)
 			pio.pin.sethigh(gps.io)
 		end
 	end
-	if gps.chiptype == GPS_UBLOX then
-		if not gps.io then pmd.ldoset(0,pmd.LDO_VCAM) end
-	elseif gps.chiptype == GPS_RDA then
-		gpscore.close()
-	elseif gps.chiptype == GPS_MTK then
-		gpscore.close()	
-	end
-	if gps.chiptype ~= GPS_MTK then
-		closeuart()
-		pm.sleep("gps")
-	end
+
+	gpscore.close()	
+
 	gps.open = false
 	if gps.state == 1 then
 		gps.state = 2
@@ -1062,7 +1025,7 @@ function getsatesinfo()
 end
 
 --[[
-函数名：initgps
+函数名：init
 功能  ：配置GPS
 参数  ：
 		ionum：GPS供电的GPIO
@@ -1077,7 +1040,7 @@ end
 		apgspwronupd：是否允许开机就执行AGPS功能
 返回值：无
 ]]
-function initgps(ionum,dir,edge,period,id,baud,databits,parity,stopbits,apgspwronupd)
+function init(ionum,dir,edge,period,id,baud,databits,parity,stopbits,apgspwronupd)
 	gps.open = false
 	gps.wrquene = {}
 	gps.curwritem = nil
@@ -1194,10 +1157,10 @@ end
 
 function setchiptype(typ)
 	gps.chiptype = typ
-	if typ == GPS_MTK then
-		sys.regmsg(gpscore.MSG_GPS_DATA_IND,gpsdateind)
-		sys.regmsg(gpscore.MSG_GPS_OPEN_IND,gpsopenind)
-	end
+
+	sys.regmsg(gpscore.MSG_GPS_DATA_IND,gpsdateind)
+	sys.regmsg(gpscore.MSG_GPS_OPEN_IND,gpsopenind)
+
 end
 
 function getutctime()
@@ -1254,3 +1217,269 @@ function gpsdateind(ty,lens)
 		end
 	end	
 end
+
+
+--“GPS应用”：指的是使用GPS功能的一个应用
+--例如，假设有如下3种需求，要打开GPS，则一共有3个“GPS应用”：
+--“GPS应用1”：每隔1分钟打开一次GPS
+--“GPS应用2”：设备发生震动时打开GPS
+--“GPS应用3”：收到一条特殊短信时打开GPS
+--只有所有“GPS应用”都关闭了，才会去真正关闭GPS
+
+--[[
+每个“GPS应用”打开或者关闭GPS时，最多有4个参数，其中 GPS工作模式和“GPS应用”标记 共同决定了一个唯一的“GPS应用”：
+1、GPS工作模式(必选)
+2、“GPS应用”标记(必选)
+3、GPS开启最大时长[可选]
+4、回调函数[可选]
+例如gps.open(gpsapp.TIMERORSUC,{cause="TEST",val=120,cb=testgpscb})
+gps.TIMERORSUC为GPS工作模式，"TEST"为“GPS应用”标记，120秒为GPS开启最大时长，testgpscb为回调函数
+]]
+
+
+--[[
+GPS工作模式，共有如下3种
+1、DEFAULT
+   (1)、打开后，GPS定位成功时，如果有回调函数，会调用回调函数
+   (2)、使用此工作模式调用gps.open打开的“GPS应用”，必须调用gps.close才能关闭
+2、TIMERORSUC
+   (1)、打开后，如果在GPS开启最大时长到达时，没有定位成功，如果有回调函数，会调用回调函数，然后自动关闭此“GPS应用”
+   (2)、打开后，如果在GPS开启最大时长内，定位成功，如果有回调函数，会调用回调函数，然后自动关闭此“GPS应用”
+   (3)、打开后，在自动关闭此“GPS应用”前，可以调用gps.close主动关闭此“GPS应用”，主动关闭时，即使有回调函数，也不会调用回调函数
+3、TIMER
+   (1)、打开后，在GPS开启最大时长时间到达时，无论是否定位成功，如果有回调函数，会调用回调函数，然后自动关闭此“GPS应用”
+   (2)、打开后，在自动关闭此“GPS应用”前，可以调用gps.close主动关闭此“GPS应用”，主动关闭时，即使有回调函数，也不会调用回调函数
+]]
+DEFAULT,TIMERORSUC,TIMER = 0,1,2
+
+--“GPS应用”表
+local tlist = {}
+
+--[[
+函数名：print
+功能  ：打印接口，此文件中的所有打印都会加上gpsapp前缀
+参数  ：无
+返回值：无
+]]
+local function print(...)
+	base.print("gpsapp",...)
+end
+
+--[[
+函数名：delitem
+功能  ：从“GPS应用”表中删除一项“GPS应用”，并不是真正的删除，只是设置一个无效标志
+参数  ：
+		mode：GPS工作模式
+		para：
+			para.cause：“GPS应用”标记
+			para.val：GPS开启最大时长
+			para.cb：回调函数
+返回值：无
+]]
+local function delitem(mode,para)
+	local i
+	for i=1,#tlist do
+		--标志有效 并且 GPS工作模式相同 并且 “GPS应用”标记相同
+		if tlist[i].flag and tlist[i].mode == mode and tlist[i].para.cause == para.cause then
+			--设置无效标志
+			tlist[i].flag,tlist[i].delay = false
+			break
+		end
+	end
+end
+
+--[[
+函数名：additem
+功能  ：新增一项“GPS应用”到“GPS应用”表
+参数  ：
+		mode：GPS工作模式
+		para：
+			para.cause：“GPS应用”标记
+			para.val：GPS开启最大时长
+			para.cb：回调函数
+返回值：无
+]]
+local function additem(mode,para)
+	--删除相同的“GPS应用”
+	delitem(mode,para)
+	local item,i,fnd = {flag = true, mode = mode, para = para}
+	--如果是TIMERORSUC或者TIMER模式，初始化GPS工作剩余时间
+	if mode == TIMERORSUC or mode == TIMER then item.para.remain = para.val end
+	for i=1,#tlist do
+		--如果存在无效的“GPS应用”项，直接使用此位置
+		if not tlist[i].flag then
+			tlist[i] = item
+			fnd = true
+			break
+		end
+	end
+	--新增一项
+	if not fnd then table.insert(tlist,item) end
+end
+
+local function isexisttimeritem()
+	local i
+	for i=1,#tlist do
+		if tlist[i].flag and (tlist[i].mode == TIMERORSUC or tlist[i].mode == TIMER or tlist[i].para.delay) then return true end
+	end
+end
+
+local function timerfunc()
+	local i
+	for i=1,#tlist do
+		print("timerfunc@"..i,tlist[i].flag,tlist[i].mode,tlist[i].para.cause,tlist[i].para.val,tlist[i].para.remain,tlist[i].para.delay)
+		if tlist[i].flag then
+			local rmn,dly,md,cb = tlist[i].para.remain,tlist[i].para.delay,tlist[i].mode,tlist[i].para.cb
+			if rmn and rmn > 0 then
+				tlist[i].para.remain = rmn - 1
+			end
+			if dly and dly > 0 then
+				tlist[i].para.delay = dly - 1
+			end
+			
+			rmn = tlist[i].para.remain
+			if isfix() and md == TIMER and rmn == 0 and not tlist[i].para.delay then
+				tlist[i].para.delay = 1
+			end
+			
+			dly = tlist[i].para.delay
+			if isfix() then
+				if dly and dly == 0 then
+					if cb then cb(tlist[i].para.cause) end
+					if md == DEFAULT then
+						tlist[i].para.delay = nil
+					else
+						close(md,tlist[i].para)
+					end
+				end
+			else
+				if rmn and rmn == 0 then
+					if cb then cb(tlist[i].para.cause) end
+					close(md,tlist[i].para)
+				end
+			end			
+		end
+	end
+	if isexisttimeritem() then sys.timer_start(timerfunc,1000) end
+end
+
+--[[
+函数名：gpsstatind
+功能  ：处理GPS定位成功的消息
+参数  ：
+		id：GPS消息id
+		evt：GPS消息类型
+返回值：无
+]]
+local function gpsstatind(id,evt)
+	--定位成功的消息
+	if evt == GPS_LOCATION_SUC_EVT then
+		local i
+		for i=1,#tlist do
+			print("gpsstatind@"..i,tlist[i].flag,tlist[i].mode,tlist[i].para.cause,tlist[i].para.val,tlist[i].para.remain,tlist[i].para.delay,tlist[i].para.cb)
+			if tlist[i].flag then
+				if tlist[i].mode ~= TIMER then
+					tlist[i].para.delay = 1
+					if tlist[i].mode == DEFAULT then
+						if isexisttimeritem() then sys.timer_start(timerfunc,1000) end
+					end
+				end				
+			end			
+		end
+	end
+	return true
+end
+
+--[[
+函数名：forceclose
+功能  ：强制关闭所有“GPS应用”
+参数  ：无
+返回值：无
+]]
+function forceclose()
+	local i
+	for i=1,#tlist do
+		if tlist[i].flag and tlist[i].para.cb then tlist[i].para.cb(tlist[i].para.cause) end
+		close(tlist[i].mode,tlist[i].para)
+	end
+end
+
+--[[
+函数名：close
+功能  ：关闭一个“GPS应用”
+参数  ：
+		mode：GPS工作模式
+		para：
+			para.cause：“GPS应用”标记
+			para.val：GPS开启最大时长
+			para.cb：回调函数
+返回值：无
+]]
+function close(mode,para)
+	assert((para and type(para) == "table" and para.cause and type(para.cause) == "string"),"gpsapp.close para invalid")
+	print("ctl close",mode,para.cause,para.val,para.cb)
+	--删除此“GPS应用”
+	delitem(mode,para)
+	local valid,i
+	for i=1,#tlist do
+		if tlist[i].flag then
+			valid = true
+		end		
+	end
+	--如果没有一个“GPS应用”有效，则关闭GPS
+	if not valid then closegps("gpsapp") end
+end
+
+--[[
+函数名：open
+功能  ：打开一个“GPS应用”
+参数  ：
+		mode：GPS工作模式
+		para：
+			para.cause：“GPS应用”标记
+			para.val：GPS开启最大时长
+			para.cb：回调函数
+返回值：无
+]]
+function open(mode,para)
+	assert((para and type(para) == "table" and para.cause and type(para.cause) == "string"),"gpsapp.open para invalid")
+	print("ctl open",mode,para.cause,para.val,para.cb)
+	--如果GPS定位成功
+	if isfix() then
+		if mode ~= TIMER then
+			--执行回调函数
+			if para.cb then para.cb(para.cause) end
+			if mode == TIMERORSUC then return end			
+		end
+	end
+	additem(mode,para)
+	--真正去打开GPS
+	opengps("gpsapp")
+	--启动1秒的定时器
+	if isexisttimeritem() and not sys.timer_is_active(timerfunc) then
+		sys.timer_start(timerfunc,1000)
+	end
+end
+
+--[[
+函数名：isactive
+功能  ：判断一个“GPS应用”是否处于激活状态
+参数  ：
+		mode：GPS工作模式
+		para：
+			para.cause：“GPS应用”标记
+			para.val：GPS开启最大时长
+			para.cb：回调函数
+返回值：激活返回true，否则返回nil
+]]
+function isactive(mode,para)
+	assert((para and type(para) == "table" and para.cause and type(para.cause) == "string"),"gpsapp.isactive para invalid")
+	local i
+	for i=1,#tlist do
+		if tlist[i].flag and tlist[i].mode == mode and tlist[i].para.cause == para.cause then
+			return true
+		end
+	end
+end
+
+sys.regapp(gpsstatind,GPS_STATE_IND)
