@@ -1,6 +1,6 @@
 --[[
 模块名称：音频控制
-模块功能：dtmf编解码、tts（需要底层软件支持）、音频文件的播放和停止、录音、mic和speaker的控制
+模块功能：dtmf编解码、音频文件的播放和停止、录音、mic和speaker的控制
 模块最后修改时间：2017.02.20
 ]]
 
@@ -28,7 +28,6 @@ local tonumber,type = base.tonumber,base.type
 local speakervol,audiochannel,microphonevol = audio.VOL4,audio.HANDSET,audio.MIC_VOL15
 -- GSM全速率模式
 local gsmfr = false 
-local ttscause
 --音频文件路径
 local playname
 --录音标志
@@ -86,43 +85,6 @@ function senddtmf(str,playtime,intvl)
 	intvl = intvl and intvl or 100
 
 	req("AT+SENDSOUND="..string.format("\"%s\",%d,%d",str,playtime,intvl))
-end
-
---[[
-函数名：playtts
-功能  ：播放tts
-参数  ：
-		text：字符串
-		path："net" 发给网络  "speaker" 本地播放
-返回值：true
-]]
-function playtts(text,path)
-	local action = path == "net" and 4 or 2
-
-	req("AT+QTTS=1")
-	req(string.format("AT+QTTS=%d,\"%s\"",action,text))
-end
-
---[[
-函数名：stoptts
-功能  ：停止播放tts
-参数  ：无
-返回值：无
-]]
-function stoptts()
-	req("AT+QTTS=3")
-end
-
---[[
-函数名：closetts
-功能  ：关闭tts功能
-参数  ：
-		cause：关闭原因
-返回值：无
-]]
-function closetts(cause)
-	ttscause = cause
-	req("AT+QTTS=0")
 end
 
 --[[
@@ -311,22 +273,6 @@ local function audiourc(data,prefix)
 	--DTMF接收检测
 	if prefix == "+DTMFDET" then
 		parsedtmfnum(data)	
-	--tts功能
-	elseif prefix == "+QTTS" then
-		local flag = string.match(data,": *(%d)",string.len(prefix)+1)
-		--停止播放tts
-		if flag == "0" then
-			dispatch("AUDIO_PLAY_END_IND")
-		end
-	--[[elseif prefix == "+AMFGP" then
-		local action = string.match(data,": *(%d)",string.len(prefix)+1)
-		if action then
-			if action == "0" then
-				dispatch("AUDIO_PLAY_END_IND")
-			elseif action == "1" then
-				dispatch("AUDIO_PLAY_ERROR_IND")
-			end
-		end]]
 	end
 end
 
@@ -343,30 +289,15 @@ end
 local function audiorsp(cmd,success,response,intermediate)
 	local prefix = smatch(cmd,"AT(%+%u+%?*)")
 
-	--播放tts或者关闭tts应答
-	if prefix == "+QTTS" then
-		local action = smatch(cmd,"QTTS=(%d)")
-		if not success then
-			if action == "1" or action == "2" then
-				--播放失败，产生一个内部消息
-				dispatch("AUDIO_PLAY_ERROR_IND")
-			end
-		else
-			if action == "0" then
-				dispatch("TTS_CLOSE_IND",ttscause)
-			end
-		end
-	end
+  print("audiorsp prefix=",prefix)
 end
 
 --注册以下通知的处理函数
 ril.regurc("+DTMFDET",audiourc)
 ril.regurc("+AUDREC",audiourc)
 --ril.regurc("+AMFGP",audiourc)
-ril.regurc("+QTTS",audiourc)
 --注册以下AT命令的应答处理函数
 ril.regrsp("+AUDREC",audiorsp,0)
-ril.regrsp("+QTTS",audiorsp,0)
 
 --[[
 函数名：setspeakervol
