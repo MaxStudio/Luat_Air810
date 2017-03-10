@@ -9,6 +9,7 @@ local base = _G
 local string = require"string"
 local sys = require "sys"
 local ril = require "ril"
+local pio = require"pio"
 local sim = require"sim"
 module("net")
 
@@ -16,7 +17,7 @@ module("net")
 local dispatch = sys.dispatch
 local req = ril.request
 local smatch = string.match
-local tonumber,tostring = base.tonumber,base.tostring
+local tonumber,tostring,print = base.tonumber,base.tostring,base.print
 
 --GSM网络状态：
 --INIT：开机初始化中的状态
@@ -32,8 +33,30 @@ local lac,ci,rssi = "","",0
 --csqqrypriod：信号强度定时查询间隔
 --cengqrypriod：当前和临近小区信息定时查询间隔
 local csqqrypriod,cengqrypriod = 60*1000
---当前小区和临近小区信息表
-local cellinfo = {}
+
+--cellinfo：当前小区和临近小区信息表
+--flymode：是否处于飞行模式
+--csqswitch：定时查询信号强度开关
+--cengswitch：定时查询当前和临近小区信息开关
+local cellinfo,flymode,csqswitch,cengswitch = {}
+
+--ledstate：网络指示灯状态INIT,FLYMODE,SIMERR,IDLE,CREG,CGATT,SCK
+--INIT：功能关闭状态
+--FLYMODE：飞行模式
+--SIMERR：未检测到SIM卡或者SIM卡锁pin码等异常
+--IDLE：未注册GSM网络
+--CREG：已注册GSM网络
+--CGATT：已附着GPRS数据网络
+--SCK：用户socket已连接上后台
+--ledontime：指示灯点亮时长(毫秒)
+--ledofftime：指示灯熄灭时长(毫秒)
+--usersckconnect：用户socket是否连接上后台
+local ledstate,ledontime,ledofftime,usersckconnect = "INIT",0,0
+--ledflg：网络指示灯开关
+--ledpin：网络指示灯控制引脚
+--ledvalid：引脚输出何种电平会点亮指示灯，1为高，0为低
+--ledidleon,ledidleoff,ledcregon,ledcregoff,ledcgatton,ledcgattoff,ledsckon,ledsckoff：IDLE,CREG,CGATT,SCK状态下指示灯的点亮和熄灭时长(毫秒)
+local ledflg,ledpin,ledvalid,ledflymodeon,ledflymodeoff,ledsimerron,ledsimerroff,ledidleon,ledidleoff,ledcregon,ledcregoff,ledcgatton,ledcgattoff,ledsckon,ledsckoff = false,pio.P0_15,1,0,0xFFFF,300,5700,300,3700,300,700,300,1700,100,100
 
 --[[
 函数名：creg
@@ -70,7 +93,10 @@ local function creg(data)
 		end
 		--]]
 		state = s
+		--产生一个内部消息NET_STATE_CHANGED，表示GSM网络注册状态发生变化
 		dispatch("NET_STATE_CHANGED",s)
+		--指示灯控制
+		procled()
 	end
 	--已注册并且lac或ci发生了变化
 	if state == "REGISTERED" then
@@ -161,9 +187,12 @@ end
 ]]
 local function neturc(data,prefix)
 	if prefix == "+CREG" then
-		req("AT+CSQ",nil,nil,nil,{skip=true}) -- 收到网络状态变化时,更新一下信号值
+		--收到网络状态变化时,更新一下信号值
+		csqquery()
+		--解析creg信息
 		creg(data)
 	elseif prefix == "+CENG" then
+		--解析ceng信息
 		ceng(data)
 	end
 end
@@ -298,13 +327,19 @@ function startquerytimer() end
 函数名：simind
 功能  ：内部消息SIM_IND的处理函数
 参数  ：
-                id: 无意义
 		para：参数，表示SIM卡状态
 返回值：无
 ]]
-local function SimInd(id,para)
+local function simind(para)
+	if simerrsta ~= (para~="RDY") then
+		simerrsta = (para~="RDY")
+		procled()
+	end
+	--sim卡工作不正常
 	if para ~= "RDY" then
+		--更新GSM网络状态
 		state = "UNREGISTER"
+		--产生内部消息NET_STATE_CHANGED，表示网络状态发生变化
 		dispatch("NET_STATE_CHANGED",state)
 	end
 	if para == "NIST" then
@@ -315,14 +350,58 @@ local function SimInd(id,para)
 end
 
 --[[
+函数名：flyind
+功能  ：内部消息FLYMODE_IND的处理函数
+参数  ：
+		para：参数，表示飞行模式状态，true表示进入飞行模式，false表示退出飞行模式
+返回值：无
+]]
+local function flyind(para)
+	--飞行模式状态发生变化
+	if flymode~=para then
+		flymode = para
+		--控制网络指示灯
+		procled()
+	end
+	--退出飞行模式
+	if not para then
+		----处理查询定时器
+		startcsqtimer()
+		startcengtimer()
+		--复位GSM网络状态
+		neturc("2","+CREG")
+	end
+	return true
+end
+
+--[[
+函数名：workmodeind
+功能  ：内部消息SYS_WORKMODE_IND的处理函数
+参数  ：
+		para：参数，表示系统工作模式
+返回值：无
+]]
+local function workmodeind(para)
+	--处理查询定时器
+	startcengtimer()
+	startcsqtimer()
+	return true
+end
+
+--[[
 函数名：startcsqtimer
 功能  ：有选择性的启动“信号强度查询”定时器
 参数  ：无
 返回值：无
 ]]
 function startcsqtimer()
-	req("AT+CSQ",nil,nil,nil,{skip=true})
-	sys.timer_start(startcsqtimer,csqqrypriod)
+  --不是飞行模式 并且 (打开了查询开关 或者 工作模式为完整模式)
+  if not flymode and (csqswitch or sys.getworkmode()==sys.FULL_MODE) then
+    --发送AT+CSQ查询
+    csqquery()
+    --启动定时器
+    sys.timer_start(startcsqtimer,csqqrypriod)
+  end
 end
 
 --[[
@@ -332,8 +411,13 @@ end
 返回值：无
 ]]
 function startcengtimer()
-	req("AT+ECELL")
-	sys.timer_start(startcengtimer,cengqrypriod)
+  --设置了查询间隔 并且 不是飞行模式 并且 (打开了查询开关 或者 工作模式为完整模式)
+  if cengqrypriod and not flymode and (cengswitch or sys.getworkmode()==sys.FULL_MODE) then
+    --发送AT+CENG?查询
+    cengquery()
+    --启动定时器
+    sys.timer_start(startcengtimer,cengqrypriod)
+  end
 end
 
 --[[
@@ -400,7 +484,21 @@ end
 返回值：无
 ]]
 function cengquery()
-	req("AT+ECELL")
+	--不是飞行模式，发送AT+CENG?
+	if not flymode then req("AT+ECELL") end
+end
+
+--[[
+函数名：setcengswitch
+功能  ：设置“当前和临近小区信息”查询开关
+参数  ：
+		v：true为开启，其余为关闭
+返回值：无
+]]
+function setcengswitch(v)
+	cengswitch = v
+	--开启并且不是飞行模式
+	if v and not flymode then startcengtimer() end
 end
 
 --[[
@@ -410,19 +508,197 @@ end
 返回值：无
 ]]
 function csqquery()
-	req("AT+CSQ",nil,nil,nil,{skip=true})
+	--不是飞行模式，发送AT+CSQ
+	if not flymode then req("AT+CSQ",nil,nil,nil,{skip=true}) end
 end
 
+--[[
+函数名：setcsqswitch
+功能  ：设置“信号强度”查询开关
+参数  ：
+		v：true为开启，其余为关闭
+返回值：无
+]]
+function setcsqswitch(v)
+	csqswitch = v
+	--开启并且不是飞行模式
+	if v and not flymode then startcsqtimer() end
+end
+
+--[[
+函数名：ledblinkon
+功能  ：点亮网络指示灯
+参数  ：无
+返回值：无
+]]
+local function ledblinkon()
+	--print("ledblinkon",ledstate,ledontime,ledofftime)
+	--引脚输出电平控制指示灯点亮
+	pio.pin.setval(ledvalid==1 and 1 or 0,ledpin)
+	--常灭
+	if ledontime==0 and ledofftime==0xFFFF then
+		ledblinkoff()
+	--常亮
+	elseif ledontime==0xFFFF and ledofftime==0 then
+		--关闭点亮时长定时器和熄灭时长定时器
+		sys.timer_stop(ledblinkon)
+		sys.timer_stop(ledblinkoff)
+	--闪烁
+	else
+		--启动点亮时长定时器，定时到了之后，熄灭指示灯
+		sys.timer_start(ledblinkoff,ledontime)
+	end	
+end
+
+--[[
+函数名：ledblinkoff
+功能  ：熄灭网络指示灯
+参数  ：无
+返回值：无
+]]
+function ledblinkoff()
+	--print("ledblinkoff",ledstate,ledontime,ledofftime)
+	--引脚输出电平控制指示灯熄灭
+	pio.pin.setval(ledvalid==1 and 0 or 1,ledpin)
+	--常灭
+	if ledontime==0 and ledofftime==0xFFFF then
+		--关闭点亮时长定时器和熄灭时长定时器
+		sys.timer_stop(ledblinkon)
+		sys.timer_stop(ledblinkoff)
+	--常亮
+	elseif ledontime==0xFFFF and ledofftime==0 then
+		ledblinkon()
+	--闪烁
+	else
+		--启动熄灭时长定时器，定时到了之后，点亮指示灯
+		sys.timer_start(ledblinkon,ledofftime)
+	end	
+end
+
+--[[
+函数名：procled
+功能  ：更新网络指示灯状态以及点亮和熄灭时长
+参数  ：无
+返回值：无
+]]
+function procled()
+	print("procled",ledflg,ledstate,flymode,usersckconnect,cgatt,state)
+	--如果开启了网络指示灯功能
+	if ledflg then
+		local newstate,newontime,newofftime = "IDLE",ledidleon,ledidleoff
+		--飞行模式
+		if flymode then
+			newstate,newontime,newofftime = "FLYMODE",ledflymodeon,ledflymodeoff
+		--用户socket连接到了后台
+		elseif usersckconnect then
+			newstate,newontime,newofftime = "SCK",ledsckon,ledsckoff
+		--附着上GPRS数据网络
+		elseif cgatt then
+			newstate,newontime,newofftime = "CGATT",ledcgatton,ledcgattoff
+		--注册上GSM网络
+		elseif state=="REGISTERED" then
+			newstate,newontime,newofftime = "CREG",ledcregon,ledcregoff
+		elseif simerrsta then
+			newstate,newontime,newofftime = "SIMERR",ledsimerron,ledsimerroff
+		end
+		--指示灯状态发生变化
+		if newstate~=ledstate then
+			ledstate,ledontime,ledofftime = newstate,newontime,newofftime
+			ledblinkoff()
+		end
+	end
+end
+
+--[[
+函数名：usersckind
+功能  ：内部消息USER_SOCKET_CONNECT的处理函数
+参数  ：
+		v：参数，表示用户socket是否连接上后台
+返回值：无
+]]
+local function usersckind(v)
+	print("usersckind",v)
+	if usersckconnect~=v then
+		usersckconnect = v
+		procled()
+	end
+end
+
+--[[
+函数名：cgattind
+功能  ：内部消息NET_GPRS_READY的处理函数
+参数  ：
+		v：参数，表示是否附着上GPRS数据网络
+返回值：无
+]]
+local function cgattind(v)
+	print("cgattind",v)
+	if cgatt~=v then
+		cgatt = v
+		procled()
+	end
+end
+
+--[[
+函数名：setled
+功能  ：设置网络指示灯功能
+参数  ：
+		v：指示灯开关，true为开启，其余为关闭
+		pin：指示灯控制引脚，可选
+		valid：引脚输出何种电平会点亮指示灯，1为高，0为低，可选
+		flymodeon,flymodeoff,simerron,simerroff,idleon,idleoff,cregon,cregoff,cgatton,cgattoff,sckon,sckoff：FLYMODE,SIMERR,IDLE,CREG,CGATT,SCK状态下指示灯的点亮和熄灭时长(毫秒)，可选
+返回值：无
+]]
+function setled(v,pin,valid,flymodeon,flymodeoff,simerron,simerroff,idleon,idleoff,cregon,cregoff,cgatton,cgattoff,sckon,sckoff)
+	local c1 = (ledflg~=v or ledpin~=(pin or ledpin) or ledvalid~=(valid or ledvalid))
+	local c2 = (ledidleon~=(idleon or ledidleon) or ledidleoff~=(idleoff or ledidleoff) or flymodeon~=(flymodeon or ledflymodeon) or flymodeoff~=(flymodeoff or ledflymodeoff))
+	local c3 = (ledcregon~=(cregon or ledcregon) or ledcregoff~=(cregoff or ledcregoff) or ledcgatton~=(cgatton or ledcgatton) or simerron~=(simerron or ledsimerron))
+	local c4 = (ledcgattoff~=(cgattoff or ledcgattoff) or ledsckon~=(sckon or ledsckon) or ledsckoff~=(sckoff or ledsckoff) or simerroff~=(simerroff or ledsimerroff))
+	--开关值发生变化 或者其他参数发生变化
+	if c1 or c2 or c3 or c4 then
+		local oldledflg = ledflg
+		ledflg = v
+		--开启
+		if v then
+			ledpin,ledvalid,ledidleon,ledidleoff,ledcregon,ledcregoff = pin or ledpin,valid or ledvalid,idleon or ledidleon,idleoff or ledidleoff,cregon or ledcregon,cregoff or ledcregoff
+			ledcgatton,ledcgattoff,ledsckon,ledsckoff = cgatton or ledcgatton,cgattoff or ledcgattoff,sckon or ledsckon,sckoff or ledsckoff
+			ledflymodeon,ledflymodeoff,ledsimerron,ledsimerroff = flymodeon or ledflymodeon,flymodeoff or ledflymodeoff,simerron or ledsimerron,simerroff or ledsimerroff
+			if not oldledflg then pio.pin.setdir(pio.OUTPUT,ledpin) end
+			procled()
+		--关闭
+		else
+			sys.timer_stop(ledblinkon)
+			sys.timer_stop(ledblinkoff)
+			if oldledflg then
+				pio.pin.setval(ledvalid==1 and 0 or 1,ledpin)
+				pio.pin.close(ledpin)
+			end
+			ledstate = "INIT"
+		end		
+	end
+end
+
+--本模块关注的内部消息处理函数表
+local procer =
+{
+	SIM_IND = simind,
+	FLYMODE_IND = flyind,
+	SYS_WORKMODE_IND = workmodeind,
+	USER_SOCKET_CONNECT = usersckind,
+	NET_GPRS_READY = cgattind,
+}
 --注册消息处理函数表
-sys.regapp(SimInd,"SIM_IND")
+sys.regapp(procer)
 --注册+CREG和+CENG通知的处理函数
 ril.regurc("+CREG",neturc)
 ril.regurc("+CENG",neturc)
 --注册AT+CCSQ命令的应答处理函数
 ril.regrsp("+CSQ",rsp)
+--发送AT命令
 req("AT+CREG=2")
 req("AT+CREG?")
 --req("AT+CENG=1")
 -- 8秒后查询第一次csq
 sys.timer_start(startcsqtimer,8*1000)
 resetcellinfo()
+setled(true)
