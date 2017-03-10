@@ -22,6 +22,12 @@ local sfind = string.find
 local vwrite = uart.write
 local vread = uart.read
 
+--是否为透传模式，true为透传模式，false或者nil为非透传模式
+--默认非透传模式
+local transparentmode
+--透传模式下，虚拟串口数据接收的处理函数
+local rcvfunc
+
 -- 常量
 local TIMEOUT,RETRYTIMEOUT,RETRY_MAX = 60000,1000,5 --1分钟无反馈 判定at命令执行失败
 
@@ -469,21 +475,29 @@ end
 local function atcreader()
 	local s
 
-	readat = true
+	if not transparentmode then readat = true end
 	--循环读取虚拟串口收到的数据
 	while true do
 		--每次读取一行
 		s = vread(uart.ATC,"*l",0)
 
 		if string.len(s) ~= 0 then
+			if transparentmode then
+				--透传模式下直接转发数据
+				rcvfunc(s)
+			else
                         --非透传模式下处理收到的数据
 			procatc(s)
+			end
 		else
 			break
 		end
 	end
-	readat = false
-	sendat() -- atc上报数据处理完以后才执行发送AT命令
+  if not transparentmode then
+    readat = false
+    --atc上报数据处理完以后才执行发送AT命令
+    sendat()
+  end
 end
 
 --注册“AT命令的虚拟串口数据接收消息”的处理函数
@@ -501,13 +515,40 @@ sys.regmsg("atc",atcreader)
 返回值：无
 ]]
 function request(cmd,arg,onrsp,delay,retry)
+	if transparentmode then return end
 	--插入缓冲队列
 	if arg or onrsp or delay or retry then
 		table.insert(cmdqueue,{cmd = cmd,arg = arg,rsp = onrsp,delay = delay,retry = retry})
 	else
 		table.insert(cmdqueue,cmd)
 	end
-
+	--执行AT命令发送
 	sendat()
 end
+
+--[[
+函数名：setransparentmode
+功能  ：AT命令通道设置为透传模式
+参数  ：
+		fnc：透传模式下，虚拟串口数据接收的处理函数
+返回值：无
+注意：透传模式和非透传模式，只支持开机的第一次设置，不支持中途切换
+]]
+function setransparentmode(fnc)
+	transparentmode,rcvfunc = true,fnc
+end
+
+--[[
+函数名：sendtransparentdata
+功能  ：透传模式下发送数据
+参数  ：
+		data：数据
+返回值：成功返回true，失败返回nil
+]]
+function sendtransparentdata(data)
+	if not transparentmode then return end
+	vwrite(uart.ATC,data)
+	return true
+end
+
 sys.timer_start(kickoff,3000)
