@@ -27,6 +27,19 @@ local assert = base.assert
 local isn = 65535
 
 -- 定时器管理,自动分配定时器id
+
+--“是否需要刷新界面”的标志，有GUI的项目才会用到此标志
+local refreshflag = false
+--[[
+函数名：refresh
+功能  ：设置界面刷新标志，有GUI的项目才会用到此接口
+参数  ：无
+返回值：无
+]]
+function refresh()
+	refreshflag = true
+end
+
 --定时器支持的单步最大时长，单位毫秒
 local MAXMS = 0x7fffffff/17
 --定时器id
@@ -40,9 +53,14 @@ local loop = {}
 --lprfun：用户自定义的“低电关机处理程序”
 --lpring：是否已经启动自动关机定时器
 local lprfun,lpring
-updateflag=false
 --错误信息文件以及错误信息内容
 local LIB_ERR_FILE,liberr = "/lib_err.txt",""
+--工作模式
+--SIMPLE_MODE：简单模式，默认不会开启“每一分钟产生一个内部消息”、“定时查询csq”、“定时查询ceng”的功能
+--FULL_MODE：完整模式，默认会开启“每一分钟产生一个内部消息”、“定时查询csq”、“定时查询ceng”的功能
+SIMPLE_MODE,FULL_MODE = 0,1
+--默认为完整模式
+local workmode = FULL_MODE
 
 --[[
 函数名：timerfnc
@@ -410,6 +428,33 @@ function poweron()
 	rtos.poweron(1)
 end
 
+--[[
+函数名：setworkmode
+功能  ：设置工作模式
+参数  ：
+		v：工作模式
+返回值：成功返回true，否则返回nil
+]]
+function setworkmode(v)
+	if workmode~=v and (v==SIMPLE_MODE or v==FULL_MODE) then
+		workmode = v
+		--产生一个工作模式变化的内部消息"SYS_WORKMODE_IND"
+		dispatch("SYS_WORKMODE_IND")
+		return true
+	end
+end
+
+--[[
+函数名：getworkmode
+功能  ：获取工作模式
+参数  ：无
+返回值：当前工作模式
+]]
+function getworkmode()
+	return workmode
+end
+
+
 --应用消息分发,消息通知
 local apps = {}
 
@@ -567,8 +612,9 @@ local function runqmsg()
 		--内部消息为空
 		if  inmsg == nil then 
 			--需要刷新界面
-			if updateflag then
-				updateflag=false
+			if refreshflag == true then
+				refreshflag=false
+				--产生一个界面刷新内部消息
 				inmsg={"UIWND_UPDATE"}
 			else
 				break
