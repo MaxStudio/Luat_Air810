@@ -6,7 +6,7 @@ module(...,package.seeall)
 
 local ssub,schar,smatch,sbyte,slen = string.sub,string.char,string.match,string.byte,string.len
 --测试时请搭建自己的服务器
-local SCK_IDX,PROT,ADDR,PORT = 1,"TCP","120.26.196.195",9999
+local SCK_IDX,PROT,ADDR,PORT = 1,"TCP","www.your-server.com",8000
 --linksta:与后台的socket连接状态
 local linksta
 --一个连接周期内的动作：如果连接后台失败，会尝试重连，重连间隔为RECONN_PERIOD秒，最多重连RECONN_MAX_CNT次
@@ -81,7 +81,6 @@ end
 返回值：CONNECT报文数据和报文参数
 ]]
 function mqttconndata()
-  print("mqttconndata getimei:",misc.getimei())
 	return mqtt.pack(mqtt.CONNECT,KEEP_ALIVE_TIME,misc.getimei(),misc.getimei(),enpwd(misc.getimei()))
 end
 
