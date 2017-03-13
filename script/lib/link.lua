@@ -35,22 +35,43 @@ local linklist = {}
 local ipstatus,sckconning = "IP INITIAL"
 --GPRS数据网络附着状态，"1"附着，其余未附着
 local cgatt
---apn 用户名
-local apn = "CMNET"
+--apn的名称,用户名,密码
+local apnname = "CMNET"
+local username=''
+local password=''
 --socket发起连接请求后，如果在connectnoretinterval毫秒后没有任何应答，如果connectnoretrestart为true，则会重启软件
 local connectnoretrestart = false
 local connectnoretinterval
+--apnflg：本功能模块是否自动获取apn信息，true是，false则由用户应用脚本自己调用setapn接口设置apn、用户名和密码
+--checkciicrtm：执行AT+CIICR后，如果设置了checkciicrtm，checkciicrtm毫秒后，没有激活成功，则重启软件（中途执行AT+CIPSHUT则不再重启）
+--flymode：是否处于飞行模式
+--updating：是否正在执行远程升级功能(update.lua)
+--dbging：是否正在执行dbg功能(dbg.lua)
+--shutpending：是否有等待处理的进入AT+CIPSHUT请求
+local apnflag,checkciicrtm,flymode,updating,dbging,shutpending=true
 
 --[[
 函数名：setapn
 功能  ：设置apn、用户名和密码
 参数  ：
 		a：apn
+		b：用户名
+		c：密码
 返回值：无
 ]]
-function setapn(a)
-	apn = a
-	extapn=true
+function setapn(a,b,c)
+	apnname,username,password = a,b or '',c or ''
+	apnflag=false
+end
+
+--[[
+函数名：getapn
+功能  ：获取apn
+参数  ：无
+返回值：apn
+]]
+function getapn()
+	return apnname
 end
 
 --[[
@@ -113,17 +134,18 @@ end
 返回值：无
 ]]
 local function setupIP()
-	print("link.setupIP:",ipstatus,cgatt)
-	if ipstatus ~= "IP INITIAL" then
+	print("link.setupIP:",ipstatus,cgatt,flymode)
+	--数据网络已激活或者处于飞行模式，直接返回
+	if ipstatus ~= "IP INITIAL" or flymode then
 		return
 	end
-
+	--gprs数据网络没有附着上
 	if cgatt ~= "1" then
 		print("setupip: wait cgatt")
 		return
 	end
 
-	socket.pdp_activate(apn,"","")
+	socket.pdp_activate(apnname,username,password)
 end
 
 --[[
@@ -151,6 +173,7 @@ end
 返回值：true有效，false无效
 ]]
 local function validaction(id,action)
+	--socket无效
 	if linklist[id] == nil then
 		print("link.validaction:id nil",id)
 		return false
@@ -183,9 +206,10 @@ end
 		id：socket id
 		notify：socket状态处理函数
 		recv：socket数据接收处理函数
+		tag：socket创建标记
 返回值：true成功，false失败
 ]]
-function openid(id,notify,recv)
+function openid(id,notify,recv,tag)
 	--id越界或者id的socket已经存在
 	if id > MAXLINKS or linklist[id] ~= nil then
 		print("openid:error",id)
@@ -196,11 +220,12 @@ function openid(id,notify,recv)
 		notify = notify,
 		recv = recv,
 		state = "INITIAL",
+		tag = tag,
 	}
 
 	linklist[id] = link
 
-	-- 初始化IP环境
+	--激活IP网络
 	if ipstatus ~= "IP STATUS" and ipstatus ~= "IP PROCESSING" then
 		setupIP()
 	end
@@ -217,14 +242,14 @@ end
 		tag：socket创建标记
 返回值：number类型的id表示成功，nil表示失败
 ]]
-function open(notify,recv)
+function open(notify,recv,tag)
 	local id = emptylink()
 
 	if id == nil then
 		return nil,"no empty link"
 	end
 
-	openid(id,notify,recv)
+	openid(id,notify,recv,tag)
 
 	return id
 end
@@ -329,7 +354,7 @@ function disconnect(id)
 	end
 
 	linklist[id].state = "DISCONNECTING"
-
+	--断开连接
 	socket.sock_close(id,1)
 
 	return true
@@ -355,6 +380,7 @@ function send(id,data)
 		print("link.send:failed cause call exist")
 		return false
 	end
+	--执行数据发送
 	print("link.send",id,string.len(data),(string.len(data) > 200) and "" or data)
 	socket.sock_send(id,data)
 
@@ -399,6 +425,33 @@ function linkstatus(data)
 end
 
 --[[
+函数名：usersckisactive
+功能  ：判断用户创建的socket连接是否处于激活状态
+参数  ：无
+返回值：只要任何一个用户socket处于连接状态就返回true，否则返回nil
+]]
+local function usersckisactive()
+	for i = 0,MAXLINKS do
+		--用户自定义的socket，没有tag值
+		if linklist[i] and not linklist[i].tag and linklist[i].state=="CONNECTED" then
+			return true
+		end
+	end
+end
+
+--[[
+函数名：usersckntfy
+功能  ：用户创建的socket连接状态变化通知
+参数  ：
+		id：socket id
+返回值：无
+]]
+local function usersckntfy(id)
+	--产生一个内部消息"USER_SOCKET_CONNECT"，通知“用户创建的socket连接状态发生变化”
+	if not linklist[id].tag then sys.dispatch("USER_SOCKET_CONNECT",usersckisactive()) end
+end
+
+--[[
 函数名：sendcnf
 功能  ：socket数据发送结果确认
 参数  ：
@@ -435,10 +488,12 @@ function closecnf(id,result)
 	if linklist[id].state == "DISCONNECTING" then
 		linklist[id].state = "CLOSED"
 		linklist[id].notify(id,"DISCONNECT","OK")
+		usersckntfy(id,false)
 		stopconnectingtimer(id)
-	elseif linklist[id].state == "CLOSING" then
 		-- 连接注销,清除维护的连接信息,清除urc关注
+	elseif linklist[id].state == "CLOSING" then
 		local tlink = linklist[id]
+		usersckntfy(id,false)
 		linklist[id] = nil
 		tlink.notify(id,"CLOSE","OK")
 		stopconnectingtimer(id)
@@ -491,7 +546,8 @@ function statusind(id,state)
 	else
 		linklist[id].state = "CLOSED"
 	end
-
+	--调用usersckntfy判断是否需要通知“用户socket连接状态发生变化”
+	usersckntfy(id,state == "CONNECT OK")
 	--调用用户注册的状态处理函数
 	linklist[id].notify(id,evt,state)
 	stopconnectingtimer(id)
@@ -552,6 +608,7 @@ end
 ]]
 local function closeall()
 	local i
+
 	for i = 0,MAXLINKS do
 		if linklist[i] then
 			if linklist[i].state == "CONNECTING" and linklist[i].pending then
@@ -559,6 +616,7 @@ local function closeall()
 			elseif linklist[i].state == "INITIAL" then -- 未连接的也不提示
 			else
 				linklist[i].state = "SHUTING"
+				usersckntfy(i,false)
 				socket.sock_close(i,0)
 			end
 			stopconnectingtimer(i)
@@ -573,8 +631,12 @@ end
 返回值：无
 ]]
 function shut()
+	--如果正在执行远程升级功能或者dbg功能，则延迟关闭
+	if updating or dbging then shutpending = true return end
 	closeall()
 	socket.pdp_deactivate()
+	sckconning = false
+	shutpending = false
 end
 reset = shut
 
@@ -661,7 +723,7 @@ local function cgattrsp(cmd,success,response,intermediate)
 			cgatt = "1"
 			sys.dispatch("NET_GPRS_READY",true)
 
-			-- 如果存在链接,那么在gprs附着上以后自动初始化ip环境
+			-- 如果存在链接,那么在gprs附着上以后自动初始化IP环境
 			if base.next(linklist) then
 				if ipstatus == "IP INITIAL" then
 					setupIP()
@@ -688,7 +750,8 @@ end
 返回值：无
 ]]
 querycgatt = function()
-	req("AT+CGATT?",nil,cgattrsp,nil,{skip=true})
+	--不是飞行模式，才去查询
+	if not flymode then req("AT+CGATT?",nil,cgattrsp,nil,{skip=true}) end
 end
 
 function setquicksend() end
@@ -730,11 +793,37 @@ local apntable =
 功能  ：本模块注册的内部消息的处理函数
 参数  ：
 		id：内部消息id
+		para：内部消息参数
 返回值：true
 ]]
-local function proc(id)
+local function proc(id,para)
+	--IMSI读取成功
+	if id=="IMSI_READY" then
 	if not extapn then
-		apn=apntable[sim.getmcc()..sim.getmnc()] or "CMNET"
+		apnname=apntable[sim.getmcc()..sim.getmnc()] or "CMNET"
+	end
+	--飞行模式状态变化
+	elseif id=="FLYMODE_IND" then
+		flymode = para
+		if para then
+			sys.timer_stop(req,"AT+CIPSTATUS")
+		else
+			req("AT+CGATT?",nil,cgattrsp)
+		end
+	--远程升级开始
+	elseif id=="UPDATE_BEGIN_IND" then
+		updating = true
+	--远程升级结束
+	elseif id=="UPDATE_END_IND" then
+		updating = false
+		if shutpending then shut() end
+	--dbg功能开始
+	elseif id=="DBG_BEGIN_IND" then
+		dbging = true
+	--dbg功能结束
+	elseif id=="DBG_END_IND" then
+		dbging = false
+		if shutpending then shut() end
 	end
 	return true
 end
@@ -752,5 +841,6 @@ function getipstatus()
 end
 
 --注册本模块关注的内部消息的处理函数
-sys.regapp(proc,"IMSI_READY")
+sys.regapp(proc,"IMSI_READY","FLYMODE_IND","UPDATE_BEGIN_IND","UPDATE_END_IND","DBG_BEGIN_IND","DBG_END_IND")
 sys.regapp(netmsg,"NET_STATE_CHANGED")
+
