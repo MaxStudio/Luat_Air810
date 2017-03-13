@@ -1,3 +1,4 @@
+module("cc")
 --[[
 模块名称：通话管理
 模块功能：呼入、呼出、接听、挂断
@@ -15,7 +16,6 @@ local dbg = require"dbg"
 local table = require "table"
 --local aud = require"audio"
 
-module("cc")
 
 --加载常用的全局函数至本地
 local ipairs,pairs = base.ipairs,base.pairs
@@ -33,10 +33,58 @@ local incoming_num = nil
 local emergency_num = {"112", "911", "000", "08", "110", "119", "118", "999"}
 --通话列表
 local clcc,clccold,disc,chupflag = {},{},{},0
+--状态变化通知回调
+local usercbs = {}
 
 local function print(...)
 	base.print("cc",...)
 	dbg.savetrc("cc",...)
+end
+
+--[[
+函数名：dispatch
+功能  ：执行每个内部消息对应的用户回调
+参数  ：
+		evt：消息类型
+		para：消息参数
+返回值：无
+]]
+local function dispatch(evt,para)
+	local tag = string.match(evt,"CALL_(.+)")
+	if usercbs[tag] then usercbs[tag](para) end
+end
+
+--[[
+函数名：regcb
+功能  ：注册一个或者多个消息的用户回调函数
+参数  ：
+		evt1：消息类型，目前仅支持"READY","INCOMING","CONNECTED","DISCONNECTED"
+		cb1：消息对应的用户回调函数
+		...：evt和cb成对出现
+返回值：无
+]]
+function regcb(evt1,cb1,...)
+	usercbs[evt1] = cb1
+	local i
+	for i=1,arg.n,2 do
+		usercbs[unpack(arg,i,i)] = unpack(arg,i+1,i+1)
+	end
+end
+
+--[[
+函数名：deregcb
+功能  ：撤销注册一个或者多个消息的用户回调函数
+参数  ：
+		evt1：消息类型，目前仅支持"READY","INCOMING","CONNECTED","DISCONNECTED"
+		...：0个或者多个evt
+返回值：无
+]]
+function deregcb(evt1,...)
+	usercbs[evt1] = nil
+	local i
+	for i=1,arg.n do
+		usercbs[unpack(arg,i,i)] = nil
+	end
 end
 
 --[[
@@ -46,7 +94,7 @@ end
 		num：待检查号码
 返回值：true为紧急号码，false不为紧急号码
 ]]
-function isemergencynum(num)
+local function isemergencynum(num)
 	for k,v in ipairs(emergency_num) do
 		if v == num then
 			return true
@@ -172,7 +220,8 @@ local function proclist()
 	    end
     end
     
-    if hasincoming then--????¨2?a¨°?|ì??¨|???êo??o?3?|ì?¨a?¨o?à¨?Do?¨¨??ê?o?3?¨o?ì??¨1?ê?|ì¨2¨°????clcc?Did?a1|ì?¨a?§???¨o?o?3??ê?|ì¨2?t???clcc?Did?a1|ì?¨o?o?¨¨??ê?|ì¨2?t???clcc?¨￠1?1?¨¤??D?¨¨¨°a??|¨¤¨adisc????é?ê?¨°2¨°a??|¨¤¨aincoming????é?ê?¨???¨¨??|¨¤¨adisc????é
+    --存在这一的情况：刚呼出的同时有呼入，呼出失败，第一次clcc中id为1的通话是呼出，第二次clcc中id为1的是呼入，第二次clcc结果锅里中既要处理disc消息，也要处理incoming消息，优先处理disc消息
+    if hasincoming then
         print("ljdcc real dispatch incom ",hasincoming[1],hasincoming[2],hasincoming[3])
         dispatch("CALL_INCOMING",hasincoming[1],hasincoming[2],hasincoming[3])
     end
@@ -271,6 +320,105 @@ function accept()
 end
 
 --[[
+函数名：transvoice
+功能  ：通话中发送声音到对端,必须是12.2K AMR格式
+参数  ：
+返回值：true为成功，false为失败
+]]
+function transvoice(data,loop,loop2)
+  local f = io.open("/RecDir/rec000","wb")
+
+  if f == nil then
+    print("transvoice:open file error")
+    return false
+  end
+
+  -- 有文件头并且是12.2K帧
+  if string.sub(data,1,7) == "#!AMR\010\060" then
+  -- 无文件头且是12.2K帧
+  elseif string.byte(data,1) == 0x3C then
+    f:write("#!AMR\010")
+  else
+    print("transvoice:must be 12.2K AMR")
+    return false
+  end
+
+  f:write(data)
+  f:close()
+
+  req(string.format("AT+AUDREC=%d,%d,2,0,50000",loop2 == true and 1 or 0,loop == true and 1 or 0))
+
+  return true
+end
+
+--[[
+函数名：dtmfdetect
+功能  ：设置dtmf检测是否使能以及灵敏度
+参数  ：
+    enable：true使能，false或者nil为不使能
+    sens：灵敏度，默认3，最灵敏为1
+返回值：无
+]]
+function dtmfdetect(enable,sens)
+  if enable == true then
+    if not gsmfr then setGSMFR() end
+
+    if sens then
+      req("AT+DTMFDET=2,1," .. sens)
+    else
+      req("AT+DTMFDET=2,1,3")
+    end
+  end
+
+  req("AT+DTMFDET="..(enable and 1 or 0))
+end
+
+--[[
+函数名：senddtmf
+功能  ：发送dtmf到对端
+参数  ：
+    str：dtmf字符串
+    playtime：每个dtmf播放时间，单位毫秒，默认100
+    intvl：两个dtmf间隔，单位毫秒，默认100
+返回值：无
+]]
+function senddtmf(str,playtime,intvl)
+  if string.match(str,"([%dABCD%*#]+)") ~= str then
+    print("senddtmf: illegal string "..str)
+    return false
+  end
+
+  playtime = playtime and playtime or 100
+  intvl = intvl and intvl or 100
+
+  req("AT+SENDSOUND="..string.format("\"%s\",%d,%d",str,playtime,intvl))
+end
+
+local dtmfnum = {[71] = "Hz1000",[69] = "Hz1400",[70] = "Hz2300"}
+
+--[[
+函数名：parsedtmfnum
+功能  ：dtmf解码，解码后，会产生一个内部消息AUDIO_DTMF_DETECT，携带解码后的DTMF字符
+参数  ：
+    data：dtmf字符串数据
+返回值：无
+]]
+local function parsedtmfnum(data)
+  local n = base.tonumber(string.match(data,"(%d+)"))
+  local dtmf
+
+  if (n >= 48 and n <= 57) or (n >=65 and n <= 68) or n == 42 or n == 35 then
+    dtmf = string.char(n)
+  else
+    dtmf = dtmfnum[n]
+  end
+
+  if dtmf then
+    dispatch("AUDIO_DTMF_DETECT",dtmf)
+  end
+end
+
+--[[
 函数名：ccurc
 功能  ：本功能模块内“注册的底层core通过虚拟串口主动上报的通知”的处理
 参数  ：
@@ -319,6 +467,9 @@ local function ccurc(data,prefix)
 			    cc.dir,cc.sta,cc.mode,cc.mpty,cc.num = dir,sta,mode,mpty,num
 			end		
 		end
+	--DTMF接收检测
+	elseif prefix == "+DTMFDET" then
+		parsedtmfnum(data)
 	end
 end
 
@@ -364,6 +515,7 @@ ril.regurc("BUSY",ccurc)
 ril.regurc("+CLIP",ccurc)
 ril.regurc("+CLCC",ccurc)
 
+ril.regurc("+DTMFDET",ccurc)
 --注册以下AT命令的应答处理函数
 ril.regrsp("D",ccrsp)
 ril.regrsp("A",ccrsp)
