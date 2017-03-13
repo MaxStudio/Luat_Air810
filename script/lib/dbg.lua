@@ -1,18 +1,20 @@
+module(...,package.seeall)
+
 --[[
 模块名称：错误管理
-模块功能：上报运行时语法错误、脚本控制的重启原因
+模块功能：将运行时语法错误、重启原因上传服务器
 模块最后修改时间：2017.02.20
 ]]
 
 --定义模块,导入依赖库
 local link = require"link"
-module(...,package.seeall)
+local misc = require"misc"
 
-
---prot,server,port：传输层协议(TCP或者UDP)，服务器地址和端口
 --FREQ：上报间隔，单位毫秒，如果错误信息上报后，没有收到OK回复，则每过此间隔都会上报一次
 --lid：socket id
-local prot,server,port,FREQ,lid = "UDP","ota.airm2m.com",9072,1800000
+--linksta：连接状态，true为连接成功，false为失败
+--prot,server,port：传输层协议(TCP或者UDP)，服务器地址和端口
+local FREQ,lid,linksta,prot,server,port = 1800000,0,false,"UDP","ota.airm2m.com",9072
 --DBG_FILE：错误文件路径
 --resinf,inf：DBG_FILE中的错误信息和sys.lua中LIB_ERR_FILE中的错误信息
 --luaerr："/luaerrinfo.txt"中的错误信息
@@ -36,7 +38,7 @@ local function readtxt(f)
 	end
 	rt = file:read("*a")
 	file:close()
-	return rt
+	return rt or ""
 end
 
 --[[
@@ -96,6 +98,17 @@ local function valid()
 end
 
 --[[
+函数名：rcvtimeout
+功能  ：发送错误信息到后台后，超时没有收到OK的回复，超时处理函数
+参数  ：无
+返回值：无
+]]
+local function rcvtimeout()
+	endntfy()
+	link.close(lid)
+end
+
+--[[
 函数名：snd
 功能  ：发送错误信息到后台
 参数  ：无
@@ -104,8 +117,9 @@ end
 local function snd()
 	local data = (luaerr or "") .. (inf or "")..(liberr or "")
 	if string.len(data) > 0 then
-		link.send(lid,_G.PROJECT .. "," .. (_G.VERSION and (_G.VERSION .. ",") or "") .. misc.getimei() .. "," .. data)
+		link.send(lid,_G.PROJECT .."_"..sys.getcorever() .. ",".. (_G.VERSION and (_G.VERSION .. ",") or "") .. misc.getimei() .. "," .. data)
 		sys.timer_start(snd,FREQ)
+		sys.timer_start(rcvtimeout,20000)
 	end
 end
 
@@ -123,7 +137,20 @@ local function reconn()
 	if reconntimes < 3 then
 		reconntimes = reconntimes+1
 		link.connect(lid,prot,server,port)
+	else
+		endntfy()
 	end
+end
+
+--[[
+函数名：endntfy
+功能  ：一个dbg功能周期结束
+参数  ：无
+返回值：无
+]]
+function endntfy()
+	sys.dispatch("DBG_END_IND")
+	sys.timer_stop(sys.dispatch,"DBG_END_IND")
 end
 
 --[[
@@ -140,6 +167,7 @@ local function notify(id,evt,val)
 	if id ~= lid then return end
 	if evt == "CONNECT" then
 		if val == "CONNECT OK" then
+			linksta = true
 			sys.timer_stop(reconn)
 			reconntimes = 0
 			rests = ""
@@ -147,6 +175,8 @@ local function notify(id,evt,val)
 		else
 			sys.timer_start(reconn,5000)
 		end
+	elseif evt=="DISCONNECT" or evt=="CLOSE" then
+		linksta = false
 	elseif evt == "STATE" and val == "CLOSED" then
 		link.close(lid)
 	end
@@ -161,7 +191,7 @@ end
 返回值：无
 ]]
 local function recv(id,data)
-	if data == "OK" then
+	if string.upper(data) == "OK" then
 		sys.timer_stop(snd)
 		link.close(lid)
 		resinf = ""
@@ -171,6 +201,8 @@ local function recv(id,data)
 		liberr = ""
 		os.remove("/luaerrinfo.txt")
 		os.remove(LIB_ERR_FILE)
+		endntfy()
+		sys.timer_stop(rcvtimeout)
 	end
 end
 
@@ -183,14 +215,20 @@ end
 返回值：无
 ]]
 local function init()
-	--读取错误文件中的错误
-	initpara()
-	--获取lua运行时语法错误
-	getlasterr()
-	if valid() then
-		lid = link.open(notify,recv)
-		link.connect(lid,prot,server,port)
-	end
+  --读取错误文件中的错误
+  initpara()
+  --获取lua运行时语法错误
+  getlasterr()
+  if valid() then
+    if linksta then
+      snd()
+    else
+      lid = link.open(notify,recv)
+      link.connect(lid,prot,server,port)
+    end
+    sys.dispatch("DBG_BEGIN_IND")
+    sys.timer_start(sys.dispatch,120000,"DBG_END_IND")
+  end
 end
 
 --[[
@@ -207,65 +245,18 @@ function restart(r)
 	rtos.restart()	
 end
 
-local trcfile,trcflg,fd,res1,res2,res3 = "/dbg_trace.txt"
-
-function rwriete(dat)
-	local rt = fd:write(dat)
-	if not rt then
-		sys.removegpsdat()
-		fd:write(dat)
+--[[
+函数名：setup
+功能  ：配置传输协议、后台地址和端口
+参数  ：
+  inProt ：传输层协议，仅支持TCP和UDP
+  inAddr：后台地址
+  inPort：后台端口
+返回值：无
+]]
+function setup(inProt,inAddr,inPort)
+	if inProt and inAddr and inPort then
+		prot,server,port = inProt,inAddr,inPort
+		init()
 	end
 end
-
-function savetrc(...)
-	if not fd and trcflg then opntrc() end
-	if fd then
-		res1,res2,res3 = fd:seek("end")
-		if res1 == nil then
-			clstrc()
-			opntrc()
-			fd:seek("end")
-		end
-		rwriete(string.sub(misc.getclockstr(),5,12)..":")
-		for i=1,arg.n do
-			local o = arg[i]
-			if type(o) == "number" then
-				rwriete(o)
-			elseif type(o) == "string" then
-				rwriete(o)
-			elseif type(o) == "boolean" then
-				rwriete(tostring(o))
-			elseif type(o) == "table" then
-				rwriete("table")
-			elseif type(o) == "nil" then
-				rwriete("nil")
-			end
-			rwriete(",")
-		end
-		
-		rwriete("\n")
-	end	
-end
-
-function opntrc()
-	if not fd then fd = io.open(trcfile,"a+") end
-	if fd then
-		trcflg = true
-	end
-	
-	return fd
-end
-
-function clstrc()
-	if fd then fd:close() end
-	fd = nil
-	trcflg = false
-end
-
-function deltrc()
-	if fd then fd:close() end
-	fd = nil
-	os.remove(trcfile)
-end
-
-init()
