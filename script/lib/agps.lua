@@ -1,4 +1,4 @@
-module("agps")
+module(...,package.seeall)
 --[[
 模块名称：AGPS，全称Assisted Global Positioning System，GPS辅助定位管理(仅适用于u-blox的GPS模块)
 模块功能：连接AGPS后台，下载GPS星历数据，写入GPS模块，加速GPS定位
@@ -35,7 +35,10 @@ local rtos = require"rtos"
 local sys = require"sys"
 local string = require"string"
 local link = require"link"
+local misc = require"misc"
+local net = require"net"
 local gps = require"gps"
+local bit = require"bit"
 
 --加载常用的全局函数至本地
 local print = base.print
@@ -46,21 +49,25 @@ local slen = string.len
 local ssub = string.sub
 local sbyte = string.byte
 local sformat = string.format
+local smatch = string.match
+local sgsub = string.gsub
+local schar = string.char
 local send = link.send
 local dispatch = sys.dispatch
 
 --[[
 lid：socket id
 isfix：GPS是否定位成功
+agpsop: 是否打开agps
 ]]
-local lid,isfix
+local lid,isfix,agpsop
 --[[
 ispt：是否开启AGPS功能
 itv：连接AGPS后台间隔，单位秒，默认2小时，是指2小时连接一次AGPS后台，更新一次星历数据
 PROT,SVR,PORT：AGPS后台传输层协议、地址、端口
 WRITE_INTERVAL：每个星历数据包写入GPS模块的间隔，单位毫秒
 ]]
-local ispt,itv,PROT,SVR,PORT,WRITE_INTERVAL = true,(2*3600),"UDP","zx1.clouddatasrv.com",8072,100
+local ispt,itv,PROT,SVR,PORT,WRITE_INTERVAL = true,(2*3600),"UDP","lbs.airm2m.com",2988,100
 --[[
 mode：AGPS功能工作模式，有以下两种（默认为0）
   0：自动连接后台、下载星历数据、写入GPS模块
@@ -123,6 +130,7 @@ local function gpsstateind(id,data)
 		sys.dispatch("AGPS_UPDATE_SUC")
 		startupdatetimer()
 		isfix = true
+		setsucstr()
 	--GPS定位失败或者GPS关闭
 	elseif data == gps.GPS_LOCATION_FAIL_EVT or data == gps.GPS_CLOSE_EVT then
 		isfix = false
@@ -131,56 +139,6 @@ local function gpsstateind(id,data)
 		gpssupport = false
 	end
 	return true
-end
-
---[[
-函数名：writecmd
-功能  ：写每条星历数据到GPS模块
-参数  ：
-		id：gps.GPS_STATE_IND，不用处理
-		data：消息参数类型
-返回值：true
-]]
-local function writecmd()
-	if eph and slen(eph) > 0 and not isfix then
-		local h1,h2 = sfind(eph,"\181\98")
-		if h1 and h2 then
-			local id = ssub(eph,h2+1,h2+2)
-			if id and slen(id) == 2 then
-				local llow,lhigh = sbyte(eph,h2+3),sbyte(eph,h2+4)
-				if lhigh and llow then
-					local length = lhigh*256 + llow
-					print("length",h2+6+length,slen(eph))
-					if h2+6+length <= slen(eph) then
-						gps.writegpscmd(false,ssub(eph,h1,h2+6+length),false)
-						eph = ssub(eph,h2+7+length,-1)
-						sys.timer_start(writecmd,WRITE_INTERVAL)
-						return
-					end
-				end
-			end
-		end
-	end
-	gps.closegps("AGPS")
-	eph = ""
-	sys.dispatch("AGPS_UPDATE_SUC")
-end
-
---[[
-函数名：startwrite
-功能  ：开始写星历数据到GPS模块
-参数  ：无
-返回值：无
-]]
-local function startwrite()
-	if isfix or not gpssupport then
-		eph = ""
-		return
-	end
-	if eph and slen(eph) > 0 then
-		gps.opengps("AGPS")
-		sys.timer_start(writecmd,WRITE_INTERVAL)
-	end
 end
 
 --[[
@@ -353,6 +311,43 @@ local function upbegin(data)
 	return false
 end
 
+function writeapgs(str)
+	print("syy writeapgs",str,slen(str))
+	local A,tmp,s1,s2 = 65,0
+	for i = 2,slen(str)-1 do
+		tmp = bit.bxor(tmp,sbyte(str,i))
+	end	
+	if bit.rshift(tmp,4) > 9 then
+		s1 = schar(bit.rshift(tmp,4) - 10 + A)
+	else 
+		s1 = bit.rshift(tmp,4) + '0'	
+	end
+		
+	if bit.band(tmp,0x0f) > 9 then
+		s2 = schar(bit.band(tmp,0x0f) - 10 + A)
+	else 
+		s2 = bit.band(tmp,0x0f) + '0'	
+	end
+	str = str..s1..s2..'\13'..'\10'..'\0'
+	print("syy writeapgs str",str,slen(str))
+	gpscore.write(str)
+end
+
+local function agpswr()
+	print("syy agpswr")
+	local clkstr,s,i = os.date("*t")
+	local clk = common.transftimezone(clkstr.year,clkstr.month,clkstr.day,clkstr.hour,clkstr.min,clkstr.sec,8,0)
+	s = string.format("%0d,%02d,%02d,%02d,%02d,%02d",clk.year,clk.month,clk.day,clk.hour,clk.min,clk.sec)		
+	local str = getagpstr()
+	if str then 
+		str = str..s..'*'		
+		writeapgs(str)
+		gps.closegps("AGPS")
+		sys.dispatch("AGPS_WRDATE_SUC")
+	end
+	return true	
+end
+
 --[[
 函数名：reqcheck
 功能  ：发送“请求星历信息”数据到服务器
@@ -361,8 +356,40 @@ end
 ]]
 function reqcheck()
 	state = "CHECK"
-	send(lid,"AGPS")
-	sys.timer_start(retry,GET_TIMEOUT)
+	local imei = misc.getimei()
+	local mnc = tonumber(net.getmnc(),16)
+	local mcc = tonumber(net.getmcc(),16)
+	local cell = tonumber(net.getci(),16)
+	local lac = tonumber(net.getlac(),16)
+	local cellinfo = net.getcellinfo()
+	print("syy reqcheck",imei,mnc,mcc,lac,cell)
+	local num,s,st,st2 = 0
+	local strtab = {}
+	for st,st2,st3 in string.gmatch(cellinfo ,"(%d+).(%d+).(%d+);*") do
+		num = num + 1
+		table.insert(strtab,{lac = st,cell=st2,rs=st3})
+	end
+	print("syy s,num",s,num)	
+	table.sort(strtab,function(a,b) return tonumber(a.rs)>tonumber(b.rs) end )
+	for i=1, #strtab do
+		if s then
+			s = s..","..strtab[i].lac..","..strtab[i].cell
+		else
+			s= strtab[i].lac..","..strtab[i].cell
+		end
+	end
+	for i = num,5 do
+		s= s..',,'
+	end
+	print("syy s",s)
+	
+	local str = imei..",3,"..lac..","..cell..","..s..","..mnc..","..mcc
+	print("syy str",str,num)
+	if num >= 3 then
+		send(lid,str)
+	else
+		sys.timer_start(retry,GET_TIMEOUT)
+	end
 end
 
 --[[
@@ -385,7 +412,7 @@ function upend(succ)
 		retries = 0
 		--写星历信息到GPS芯片
 		print("eph rcv",slen(eph))
-		startwrite()
+		--startwrite()
 		startupdatetimer()
 		if mode==1 then dispatch("AGPS_EVT","END_IND",true) end
 	else
@@ -401,6 +428,25 @@ function upend(succ)
 	end
 end
 
+local agpsstr
+
+local function setagpstr(str)
+	agpsstr = str	
+end
+
+function getagpstr(str)
+	return agpsstr	
+end
+
+function setsucstr()
+	local lng,lat = smatch(gps.getgpslocation(),"[EW]*,(%d+%.%d+),[NS]*,(%d+%.%d+)")
+	print("syy setsucstr,lng",lng,lat)
+	if lng and lat then
+		local str = '$PMTK741,'..lat..','..lng..',0,'
+		setagpstr(str)
+	end
+end
+
 --[[
 函数名：rcv
 功能  ：socket接收数据的处理函数
@@ -413,7 +459,23 @@ local function rcv(id,data)
 	base.collectgarbage()
 	--停止重试定时器
 	sys.timer_stop(retry)
+	print("syy rcv",data)
 	--如果定位成功或者不支持GPS模块
+	if smatch(data,"^3,") then
+		print(data)
+		local str1,str2,str3,str4 = smatch(data,"%d+,(%d+%.%d+),(%d+%.%d+),(%d+%/%d+%/%d+) (%d+%:%d+%:%d+)")
+		--local str5 = sgsub(str3, "/",",")
+		--local str6 = sgsub(str4, ":",",")
+		local str = '$PMTK741,'..str2..','..str1..',0,'
+		print("syy rcv str",str)
+		setagpstr(str)
+		if gps.isopen() then
+			agpswr()	
+		elseif not agpsop then
+			gps.opengps("AGPS")
+			agpsop = true
+		end
+	end
 	if isfix or not gpssupport then
 		upend(true)
 		return
@@ -540,7 +602,7 @@ end
 ]]
 local function load(force)
 	local pwrstat = pwrcb and pwrcb()
-	if (rtos.poweron_reason() == rtos.POWERON_KEY or rtos.poweron_reason() == rtos.POWERON_CHARGER or pwrstat) and (gps.isagpspwronupd() or force) then
+	if --[[(rtos.poweron_reason() == rtos.POWERON_KEY or rtos.poweron_reason() == rtos.POWERON_CHARGER or pwrstat) and ]](gps.isagpspwronupd() or force) then
 		connect()
 	else
 		startupdatetimer()
@@ -552,7 +614,13 @@ function setpwrcb(cb)
 	load(true)
 end
 
+local procer =
+{
+	AGPS_WRDATE = agpswr
+}
+
 --注册GPS消息处理函数
 sys.regapp(gpsstateind,gps.GPS_STATE_IND)
+sys.regapp(procer)
 load()
 if fly then fly.setcb(flycb) end
