@@ -89,8 +89,8 @@ GPS_KNOT_SPD = 0
 --速度单位为公里每小时
 GPS_KILOMETER_SPD = 1
 
-GPS_MTK = 2
-
+--nogpschipcnt：gps开启后，如果读取nogpschipcnt次串口，都没有收到数据，则认为没有GPS芯片
+--hdop,paccflg,paccqry,pacc：判断gps定位精度的4个参数
 local nogpschipcnt,hdop,paccflg,paccqry,pacc = 5
 
 --[[
@@ -739,7 +739,7 @@ end
 返回值：无
 ]]
 function opengps(tag)
-	print("opengps",tag,gps.chiptype)
+	print("opengps",tag)
 	gps.opentags[tag] = 1
 	if gps.open then
 		print("gps has open")
@@ -1076,7 +1076,6 @@ function init(ionum,dir,edge,period,id,baud,databits,parity,stopbits,apgspwronup
 	gps.filtertime = 5
 	gps.timezone = nil
 	gps.spdtyp = GPS_KILOMETER_SPD
-	gps.chiptype = GPS_MTK
 	gps.opentags = {}
 	gps.isagpspwronupd = (apgspwronupd == nil) and true or apgspwronupd
 
@@ -1153,14 +1152,6 @@ function openuart()
 	print("gps openuart")
 	uart.setup(gps.uartid,gps.baud,gps.databits,gps.parity,gps.stopbits)
 	sys.timer_start(read,gps.period)
-end
-
-function setchiptype(typ)
-	gps.chiptype = typ
-
-	sys.regmsg(gpscore.MSG_GPS_DATA_IND,gpsdateind)
-	sys.regmsg(gpscore.MSG_GPS_OPEN_IND,gpsopenind)
-
 end
 
 function getutctime()
