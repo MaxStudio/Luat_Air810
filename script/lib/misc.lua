@@ -14,14 +14,16 @@ local io = require"io"
 module(...)
 
 --加载常用的全局函数至本地
-local tonumber = base.tonumber
-local tostring = base.tostring
-local print = base.print
-local req = ril.request
-local smatch = string.match
-local sn,snrdy
-local ver,blver
-local imei
+local tonumber,tostring,print,req,smatch = base.tonumber,base.tostring,base.print,ril.request,string.match
+
+--[[
+sn: 序列号
+snrdy: 是否已经成功读取过序列号
+ver: 底层软件版本号
+blver: 引导软件版本号
+imei: IMEI
+]]
+local sn,snrdy,ver,blver,imei
 
 local CCLK_QUERY_TIMER_PERIOD = 60*1000
 local clk,calib,cbfunc,audflg={},false
@@ -60,8 +62,10 @@ local function rsp(cmd,success,response,intermediate)
 		if smatch(cmd,"AT%+EGMR=%d,(%d)")=="7" then return end
 	elseif smatch(cmd,"AT%+CSDS=") then
 	elseif smatch(cmd,"AT%+WISN=") then
+	--设置系统时间
 	elseif prefix == "+CCLK" then
 		startclktimer()
+	--查询是否校准
 	elseif cmd == "AT+ATWMFT=99" then
 		print('ATWMFT',intermediate)
 		if intermediate == "SUCC" then
@@ -245,6 +249,37 @@ function getaudflg()
 	return audflg
 end
 
+--[[
+函数名：ind
+功能  ：本模块注册的内部消息的处理函数
+参数  ：
+		id：内部消息id
+		para：内部消息参数
+返回值：true
+]]
+local function ind(id,para)
+	--工作模式发生变化
+	if id=="SYS_WORKMODE_IND" then
+		startclktimer()
+	--远程升级开始
+	elseif id=="UPDATE_BEGIN_IND" then
+		updating = true
+	--远程升级结束
+	elseif id=="UPDATE_END_IND" then
+		updating = false
+		if flypending then setflymode(true) end
+	--dbg功能开始
+	elseif id=="DBG_BEGIN_IND" then
+		dbging = true
+	--dbg功能结束
+	elseif id=="DBG_END_IND" then
+		dbging = false
+		if flypending then setflymode(true) end
+	end
+
+	return true
+end
+
 --注册以下AT命令的应答处理函数
 ril.regrsp("+ATWMFT",rsp)
 ril.regrsp("+WISN",rsp)
@@ -260,4 +295,7 @@ req("AT+ATWMFT=99")
 req("AT+WISN?")
 req("AT+CGSN")
 req("AT+AUD?")
+--启动整分时钟通知定时器
 startclktimer()
+--注册本模块关注的内部消息的处理函数
+sys.regapp(ind,"SYS_WORKMODE_IND","UPDATE_BEGIN_IND","UPDATE_END_IND","DBG_BEGIN_IND","DBG_END_IND")
