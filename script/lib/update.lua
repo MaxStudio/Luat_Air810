@@ -1,3 +1,5 @@
+module(...)
+
 --[[
 模块名称：远程升级
 模块功能：只在每次开机或者重启时，连接升级服务器，如果服务器存在新版本，lib和应用脚本远程升级
@@ -16,16 +18,18 @@ local sys  = require"sys"
 local link = require"link"
 local misc = require"misc"
 local common = require"common"
-module(...)
 
 --加载常用的全局函数至本地
 local print = base.print
 local send = link.send
 local dispatch = sys.dispatch
 
---updmode: 远程升级模式，可在main.lua中，配置UPDMODE变量，未配置的话默认为0
---0：自动升级模式，脚本更新后，自动重启完成升级
---1：用户自定义模式，如果后台有新版本，会产生一个消息，由用户应用脚本决定是否升级
+--[[
+updmode: 远程升级模式，可在main.lua中，配置UPDMODE变量，未配置的话默认为0
+  0：自动升级模式，脚本更新后，自动重启完成升级
+  1：用户自定义模式，如果后台有新版本，会产生一个消息，由用户应用脚本决定是否升级
+updsuc: 远程升级是否成功，true 成功，false 失败
+]]
 local updmode,updsuc = base.UPDMODE or 0
 
 --PROTOCOL：传输层协议，只支持TCP和UDP
@@ -82,6 +86,7 @@ local function save(data)
 		return
 	end
 
+	--写文件
 	local rt = f:write(data)
 	if not rt then
 		sys.removegpsdat()
@@ -224,18 +229,21 @@ function upend(succ)
 	if not succ then os.remove(UPDATEPACK) end
 	local tmpsta = state
 	state = "IDLE"
-	-- 停止充实定时器
+	--停止重试定时器
 	sys.timer_stop(retry)
 	-- 断开链接
 	link.close(lid)
 	lid = nil
-	-- 升级成功则重启
+	--升级成功并且是自动升级模式则重启
 	if succ == true and updmode == 0 then
 		sys.restart("update.upend")
 	end
+	--如果是自定义升级模式，产生一个内部消息UP_END_IND，表示升级结束以及升级结果
 	if (updmode == 1 or updmode == 2) and tmpsta == "UPDATE" then
 		dispatch("UP_EVT","UP_END_IND",succ)
 	end
+	--产生一个内部消息UPDATE_END_IND，目前与飞行模式配合使用
+	dispatch("UPDATE_END_IND")
 end
 
 --[[
@@ -246,7 +254,7 @@ end
 ]]
 function reqcheck()
 	state = "CHECK"
-	send(lid,string.format("%s,%s,%s",misc.getimei(),base.PROJECT,base.VERSION))
+	send(lid,string.format("%s,%s,%s",misc.getimei(),base.PROJECT.."_"..sys.getcorever(),base.VERSION))
 	sys.timer_start(retry,CMD_GET_TIMEOUT)
 end
 
@@ -261,7 +269,10 @@ end
 ]]
 local function nofity(id,evt,val)
 	print("notify",evt,val)
+	--连接结果
 	if evt == "CONNECT" then
+		--产生一个内部消息UPDATE_BEGIN_IND，目前与飞行模式配合使用
+		dispatch("UPDATE_BEGIN_IND")
 		--连接成功
 		if val == "CONNECT OK" then
 			reqcheck()
@@ -293,6 +304,7 @@ local upselcb = function(sel)
 	else
 		link.close(lid)
 		lid = nil
+		dispatch("UPDATE_END_IND")
 	end
 end
 
@@ -358,42 +370,25 @@ function settimezone(zone)
 	timezone = zone
 end
 
-function setmode(m)
-	updmode = m
-end
-
-function getmode()
-	return updmode
-end
-
-function setaddr(prot,addr,port)
-	PROTOCOL,SERVER,PORT = prot,addr,port
-end
-
-local function conn()
-	print("conn",lid,updsuc)
-	if not lid and not updsuc then
-		lid = link.open(nofity,recv)
-		link.connect(lid,PROTOCOL,SERVER,PORT)
+--[[
+函数名：setup
+功能  ：配置服务器的传输协议、地址和端口
+参数  ：
+        prot ：传输层协议，仅支持TCP和UDP
+		server：服务器地址
+		port：服务器端口
+返回值：无
+]]
+function setup(prot,server,port)
+	if prot and server and port then
+		PROTOCOL,SERVER,PORT = prot,server,port
+		-- 只有当定义了项目标识与版本号才支持远程升级
+		if base.PROJECT ~= nil and base.VERSION ~= nil and updmode ~= nil then
+			--连接服务器
+			lid = link.open(nofity,recv,"update")
+			link.connect(lid,PROTOCOL,SERVER,PORT)
+		end
 	end
 end
 
-local function svrequpd()
-	print("svrequpd",lid,state)
-	if not lid then
-		conn()
-	else
-		--[[if state~="WAITING" then
-			upend(false)
-			sys.timer_start(conn,5000)
-		end]]
-	end
-end
 
-sys.regapp(svrequpd,"SVR_UPD_REQ")
-
--- 只有当定义了项目标识与版本号才支持远程升级
-print("init",base.PROJECT,base.VERSION,updmode)
-if base.PROJECT and base.VERSION and (updmode==0 or updmode==1) then
-	conn()
-end
