@@ -1,4 +1,3 @@
-module("audio")
 --[[
 模块名称：音频控制
 模块功能：dtmf编解码、音频文件的播放和停止、录音、mic和speaker的控制
@@ -14,13 +13,14 @@ local audio = require"audiocore"
 local sys = require"sys"
 local ril = require"ril"
 local os = require"os"
+module(...)
 
 --加载常用的全局函数至本地
 local smatch = string.match
 local print = base.print
 local dispatch = sys.dispatch
 local req = ril.request
-local tonumber,type = base.tonumber,base.type
+local tonumber,type,assert = base.tonumber,base.type,base.assert
 
 --[[
 speakervol：speaker音量等级，取值范围为audio.VOL0到audio.VOL7，audio.VOL0为静音
@@ -354,7 +354,7 @@ local spriority,styp,spath,svol,scb,sdup,sduprd
 功能  ：关闭上次播放后，再播放本次请求
 参数  ：
 		priority：音频优先级，数值越小，优先级越高
-		typ：音频类型，目前仅支持"FILE"、"TTS"、"RECORD"
+		typ：音频类型，目前仅支持"FILE"、"RECORD"
 		path：音频文件路径
 		vol：播放音量，取值范围audiocore.VOL0到audiocore.VOL7。此参数可选
 		cb：音频播放结束或者出错时的回调函数，回调时包含一个参数：0表示播放成功结束；1表示播放出错；2表示播放优先级不够，没有播放。此参数可选
@@ -386,10 +386,9 @@ end
 功能  ：播放音频
 参数  ：
 		priority：number类型，必选参数，音频优先级，数值越大，优先级越高
-		typ：string类型，必选参数，音频类型，目前仅支持"FILE"、"TTS"、"RECORD"
+		typ：string类型，必选参数，音频类型，目前仅支持"FILE"、"RECORD"
 		path：必选参数，音频文件路径，跟typ有关：
-		      typ为"FILE"时：string类型，表示音频文件路径
-			  typ为"TTS"时：string类型，表示要播放数据的UCS2十六进制字符串
+		    typ为"FILE"时：string类型，表示音频文件路径
 			  typ为"RECORD"时：number类型，表示录音ID
 		vol：number类型，可选参数，播放音量，取值范围audiocore.VOL0到audiocore.VOL7
 		cb：function类型，可选参数，音频播放结束或者出错时的回调函数，回调时包含一个参数：0表示播放成功结束；1表示播放出错；2表示播放优先级不够，没有播放
