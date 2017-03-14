@@ -112,7 +112,7 @@ local function load()
 	end
 	f:close()
 	
-	f,para = pcall(require,string.match(paraname,"(/(.+)%.lua)"))
+	f,para = pcall(require,string.match(paraname,"/(.+)%.lua"))
 	if not f then
 		restore()
 		return
