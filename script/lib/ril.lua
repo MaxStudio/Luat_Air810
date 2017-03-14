@@ -1,5 +1,3 @@
-module("ril")
-
 --[[
 模块名称：虚拟串口AT命令交互管理
 模块功能：AT交互
@@ -13,6 +11,7 @@ local string = require"string"
 local uart = require"uart"
 local rtos = require"rtos"
 local sys = require"sys"
+module("ril")
 
 --加载常用的全局函数至本地
 local setmetatable = base.setmetatable
