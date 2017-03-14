@@ -1,5 +1,3 @@
-module(...,package.seeall)
-
 --[[
 模块名称：错误管理
 模块功能：将运行时语法错误、重启原因上传服务器
@@ -9,6 +7,7 @@ module(...,package.seeall)
 --定义模块,导入依赖库
 local link = require"link"
 local misc = require"misc"
+module(...,package.seeall)
 
 --FREQ：上报间隔，单位毫秒，如果错误信息上报后，没有收到OK回复，则每过此间隔都会上报一次
 --lid：socket id
