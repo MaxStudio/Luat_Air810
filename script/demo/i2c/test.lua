@@ -13,6 +13,17 @@ local function print(...)
 end
 
 --[[
+函数名：i2c_close
+功能  ：关闭i2c
+参数  ：id i2c的标识
+返回值：无
+]]
+local function i2c_close(id)
+  print("i2c_close",id)
+  i2c.close(id)
+end
+
+--[[
 函数名：init
 功能  ：打开i2c，写初始化命令给从设备寄存器，并从从设备寄存器读取值
 参数  ：无
@@ -32,3 +43,7 @@ local function init()
 end
 
 init()
+
+--5秒后关闭i2c
+sys.timer_start(i2c_close,5000,i2cid)
+
