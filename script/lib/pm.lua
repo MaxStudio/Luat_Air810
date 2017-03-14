@@ -92,4 +92,3 @@ function sleep(tag)
 	pmd.sleep(1)
 end
 
-pmd.sleep(1)
