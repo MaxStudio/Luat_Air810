@@ -18,14 +18,14 @@ sAddr: 实际使用时由外围设备决定，0x15只是一个例子
 local i2cid,i2cuse,sAddr = 1,true,0x15
 local I2C_SCL,I2C_SDA = pio.P1_11,pio.P1_12
 --[[
-函数名：i2copen
+函数名：i2copn
 功能  ：打开i2c
 参数  ：无
 返回值：无
 ]]
-local function i2copen()
+local function i2copn()
 	if i2c.setup(i2cid,i2c.SLOW,sAddr) ~= i2c.SLOW then
-		print("i2c open fail")
+		print("i2c opn fail")
 	end
 end
 
@@ -52,7 +52,7 @@ local function switchtoi2c()
 		pio.pin.close(I2C_SCL)
 		pio.pin.close(I2C_SDA)
 		--打开i2c功能
-		i2copen()
+		i2copn()
 		i2cuse = true
 	end
 end
@@ -92,6 +92,6 @@ local function switch()
 	end
 end
 
-i2copen()
+i2copn()
 --循环定时器，5秒切换一次功能
 sys.timer_loop_start(switch,5000)
