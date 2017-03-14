@@ -1,3 +1,5 @@
+module("sys")
+
 --[[
 模块名称：程序运行框架
 模块功能：初始化，程序运行框架、消息分发处理、定时器接口
@@ -15,7 +17,7 @@ local io = require"io"
 local os = require"os"
 local watchdog = require"watchdog"
 local bit = require"bit"
-module("sys")
+local string = require"string"
 
 --加载常用的全局函数至本地
 local print = base.print
@@ -26,7 +28,10 @@ local pairs = base.pairs
 local assert = base.assert
 local isn = 65535
 
--- 定时器管理,自动分配定时器id
+--lib脚本版本号，只要lib中的任何一个脚本做了修改，都需要更新此版本号
+SCRIPT_LIB_VER = "1.0.0"
+--支持lib脚本的最小core软件版本号
+CORE_MIN_VER = "Luat_V0001_Air810"
 
 --“是否需要刷新界面”的标志，有GUI的项目才会用到此标志
 local refreshflag = false
@@ -73,10 +78,11 @@ local function timerfnc(utid)
   local tid,sn= bit.band(utid, 0xffff),bit.band((bit.rshift(utid,16)), 0xffff)
 
 	if tpool[tid] ~= nil then
+		--此定时器的回调函数
 		local cb = tpool[tid].cb
 		
 		if tpool[tid].sn ~= sn or not cb then
-		  print("ljd invalid timerfnc tid:",tid,"sn:",sn,"realsn:",tpool[tid].sn)
+		  print("invalid timerfnc tid:",tid,"sn:",sn,"realsn:",tpool[tid].sn)
 		  return
 		end
 
@@ -147,6 +153,7 @@ end
 返回值：定时器的ID，如果失败返回nil
 ]]
 function timer_start(fnc,ms,...)
+	--回调函数必须有效，否则死机重启
 	assert(fnc ~= nil,"timer_start:callback function == nil")
 	if ms==nil then
         print("sys.timer_start",fnc)
@@ -170,7 +177,8 @@ function timer_start(fnc,ms,...)
 		tval = {cb = fnc,sn = isn}
 	end
 	uniquetid = 1
-	
+
+	--从定时器id表中找到一个未使用的id使用
 	while true do
 		if tpool[uniquetid] == nil then
 			tpool[uniquetid] = tval
@@ -179,10 +187,13 @@ function timer_start(fnc,ms,...)
 		uniquetid = uniquetid + 1
 	end
 	local tid = bit.bor(bit.lshift(isn,16),uniquetid)
-	if rtos.timer_start(tid,ms) ~= 1 then print("ljd rtos.timer_start error") return end
+	--调用底层接口启动定时器
+	if rtos.timer_start(tid,ms) ~= 1 then print("rtos.timer_start error") return end
+	--如果存在可变参数，在定时器参数表中保存参数
 	if arg.n ~= 0 then
 		para[uniquetid] = arg
 	end
+	--返回定时器id,队列id,sn
 	return tid,uniquetid,tpool[uniquetid].sn
 end
 
@@ -342,8 +353,8 @@ end
 local function initerr()
 	liberr = readtxt(LIB_ERR_FILE) or ""
 	print("sys.initerr",liberr)
-	--liberr = ""
-	--os.remove(LIB_ERR_FILE)
+	--删除LIB_ERR_FILE文件
+	os.remove(LIB_ERR_FILE)
 end
 
 local poweroffcb
@@ -366,6 +377,43 @@ function restart(r)
 	rtos.restart()	
 end
 
+--[[
+函数名：getcorever
+功能  ：获取底层软件版本号
+参数  ：无
+返回值：版本号字符串
+]]
+function getcorever()
+	return rtos.get_version()
+end
+
+--[[
+函数名：checkcorever
+功能  ：检查底层软件版本号和lib脚本需要的最小底层软件版本号是否匹配
+参数  ：无
+返回值：无
+]]
+local function checkcorever()
+	local realver = getcorever()
+	--如果没有获取到底层软件版本号
+	if not realver or realver=="" then
+		appenderr("checkcorever[no core ver error];")
+		return
+	end
+	
+	local buildver = string.match(realver,"Luat_V(%d+)_Air810")
+	--如果底层软件版本号格式错误
+	if not buildver then
+		appenderr("checkcorever[core ver format error]"..realver..";")
+		return
+	end
+	
+	--lib脚本需要的底层软件版本号大于底层软件的实际版本号
+	if tonumber(string.match(CORE_MIN_VER,"Luat_V(%d+)_Air810"))>tonumber(buildver) then
+		appenderr("checkcorever[core ver match error]"..realver..","..CORE_MIN_VER..";")
+	end
+end
+
 function poweroff(r)
 	base.print("sys poweroff:",r)
 	if r then appenderr("poweroff["..r.."];") end
@@ -383,7 +431,10 @@ end
 返回值：无
 ]]
 function init(mode,lprfnc)
+	--用户应用脚本中必须定义PROJECT和VERSION两个全局变量，否则会死机重启，如何定义请参考各个demo中的main.lua
 	assert(base.PROJECT and base.PROJECT ~= "" and base.VERSION and base.VERSION ~= "","Undefine PROJECT or VERSION")
+	require"net"
+	--设置AT命令的虚拟串口
 	uart.setup(uart.ATC,0,0,uart.PAR_NONE,uart.STOP_1)
 	print("init mode :",mode,lprfnc)
 	print("poweron reason:",rtos.poweron_reason(),mode,base.PROJECT,base.VERSION)
@@ -409,13 +460,16 @@ function init(mode,lprfnc)
 	
 	--发送MSG_POWERON_REASON消息
 	dispatch("MSG_POWERON_REASON",rtos.poweron_reason())
+	--如果存在脚本运行错误文件，打开文件，打印错误信息
 	local f = io.open("/luaerrinfo.txt","r")
 	if f then
 		print(f:read("*a") or "")
 		f:close()
 	end
+	--保存用户应用脚本中定义的“低电关机处理函数”
 	lprfun = lprfnc
 	initerr()
+	checkcorever()
 end
 
 --[[
@@ -454,6 +508,16 @@ function getworkmode()
 	return workmode
 end
 
+--[[
+函数名：opntrace
+功能  ：开启或者关闭print的打印输出功能
+参数  ：
+		v：false或nil为关闭，其余为开启
+返回值：无
+]]
+function opntrace(v)
+	rtos.set_trace(v and 1 or 0)
+end
 
 --应用消息分发,消息通知
 local apps = {}
@@ -553,15 +617,19 @@ local function callapp(msg)
 		--遍历app表
 		for i=#apps,1,-1 do
 			app = apps[i]
-			if app.procer then --函数注册方式的app,带id通知
+      --函数注册方式的app,带id通知
+			if app.procer then
 				for _,v in ipairs(app) do
 					if v == id then
+						--如果消息的处理函数没有返回true，则此消息的生命期结束；否则一直遍历app
 						if app.procer(unpack(msg)) ~= true then
 							return
 						end
 					end
 				end
-			elseif app[id] then -- 处理表方式的app,不带id通知
+      -- 处理表方式的app,不带id通知
+			elseif app[id] then
+				--如果消息的处理函数没有返回true，则此消息的生命期结束；否则一直遍历app
 				if app[id](unpack(msg,2,#msg)) ~= true then
 					return
 				end
@@ -569,7 +637,6 @@ local function callapp(msg)
 		end
 	end
 end
-
 
 --内部消息队列
 local qmsg = {}
@@ -714,8 +781,10 @@ function run()
 				--print("ZHY rtos.MSG_ALARM",msg,rtos.MSG_ALARM,type(msg))
 				handlers[msg](msg)
 			elseif msg == rtos.MSG_UART_RXDATA then
+				--AT命令的虚拟串口
 				if v1 == uart.ATC then
 					handlers.atc()
+				--物理串口
 				else
 					if uartprocs[v1] ~= nil then
 						uartprocs[v1]()
