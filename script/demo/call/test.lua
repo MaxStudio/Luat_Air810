@@ -5,6 +5,8 @@ module(...,package.seeall)
 模块最后修改时间：2017.02.23
 ]]
 
+require"cc"
+
 --默认呼叫的电话号码
 local phone_number = "10086"
 
@@ -20,13 +22,12 @@ end
 
 --[[
 函数名：connected
-功能  ：通话已建立的消息处理函数
-参数  ：
-		id：通话id
+功能  ：“通话已建立”消息处理函数
+参数  ：无
 返回值：无
 ]]
-local function connected(id)
-	print("connected:"..(id or "nil"))
+local function connected()
+	print("connected")
 	--设置mic增益
 	audio.setmicrophonegain(7)
 	--10秒中之后主动结束通话
@@ -35,51 +36,45 @@ end
 
 --[[
 函数名：disconnected
-功能  ：通话已结束的消息处理函数
+功能  ：“通话已结束”消息处理函数
 参数  ：
-		id：通话id
+		para：通话结束原因值
+			  "LOCAL_HANG_UP"：用户主动调用cc.hangup接口挂断通话
+			  "CALL_FAILED"：用户调用cc.dial接口呼出，at命令执行失败
+			  "NO CARRIER"：呼叫无应答
+			  "BUSY"：占线
+			  "NO ANSWER"：呼叫无应答
 返回值：无
 ]]
-local function disconnected(id)
-	print("disconnected:"..(id or "nil"))
+local function disconnected(para)
+	print("disconnected:"..(para or "nil"))
 	sys.timer_stop(cc.hangup,"AUTO_DISCONNECT")
 end
 
---表示第几次来电
-local incomingIdx = 1
 --[[
 函数名：incoming
-功能  ：来电消息处理函数
+功能  ：“来电”消息处理函数
 参数  ：
-		id：通话id
+		num：string类型，来电号码
 返回值：无
 ]]
-local function incoming(id)
-	print("incoming:"..(id or "nil"))
-	--第偶数次来电，自动接听
-	if incomingIdx%2==0 then
-		cc.accept()
-	--第奇数次来电，自动挂断
-	else
-		cc.hangup()
-	end	
-	incomingIdx = incomingIdx+1
+local function incoming(num)
+	print("incoming:"..num)
+	--接听来电
+	cc.accept()
 end
 
-local procer =
-{
-	CALL_INCOMING = incoming, --来电时，lib中的cc.lua会调用sys.dispatch接口抛出CALL_INCOMING消息
-	CALL_DISCONNECTED = disconnected,	--通话结束后，lib中的cc.lua会调用sys.dispatch接口抛出CALL_DISCONNECTED消息
-}
+--[[
+函数名：ready
+功能  ：“通话功能模块准备就绪”消息处理函数
+参数  ：无
+返回值：无
+]]
+local function ready()
+	print("ready")
+	--呼叫phone_number
+	cc.dial(phone_number)
+end
 
---下面两行代码是注册消息处理函数的两种方式
---二者的区别是消息处理函数接收到的参数不同
---第一种方式的第一个参数是消息ID
---第二种方式的第一个参数是消息ID后的自定义参数
---请参考incoming，connected，disconnected中的打印
-sys.regapp(connected,"CALL_CONNECTED") --建立通话后，lib中的cc.lua会调用sys.dispatch接口抛出CALL_CONNECTED消息
-sys.regapp(procer)
-
---开机后1分钟后呼叫phone_number
-sys.timer_start(cc.dial,60000,phone_number)
-
+--注册消息的用户回调函数
+cc.regcb("READY",ready,"INCOMING",incoming,"CONNECTED",connected,"DISCONNECTED",disconnected)
