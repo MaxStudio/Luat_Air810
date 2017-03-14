@@ -1,4 +1,3 @@
-module(...,package.seeall)
 --[[
 模块名称：AGPS，全称Assisted Global Positioning System，GPS辅助定位管理(仅适用于u-blox的GPS模块)
 模块功能：连接AGPS后台，下载GPS星历数据，写入GPS模块，加速GPS定位
@@ -39,6 +38,7 @@ local misc = require"misc"
 local net = require"net"
 local gps = require"gps"
 local bit = require"bit"
+module(...,package.seeall)
 
 --加载常用的全局函数至本地
 local print = base.print
