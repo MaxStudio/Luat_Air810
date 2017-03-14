@@ -1,4 +1,3 @@
-module("cc")
 --[[
 模块名称：通话管理
 模块功能：呼入、呼出、接听、挂断
@@ -16,6 +15,7 @@ local dbg = require"dbg"
 local table = require "table"
 --local aud = require"audio"
 
+module("cc")
 
 --加载常用的全局函数至本地
 local ipairs,pairs = base.ipairs,base.pairs
