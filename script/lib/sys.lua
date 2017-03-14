@@ -1,5 +1,3 @@
-module("sys")
-
 --[[
 模块名称：程序运行框架
 模块功能：初始化，程序运行框架、消息分发处理、定时器接口
@@ -18,6 +16,7 @@ local os = require"os"
 local watchdog = require"watchdog"
 local bit = require"bit"
 local string = require"string"
+module("sys")
 
 --加载常用的全局函数至本地
 local print = base.print
@@ -433,7 +432,6 @@ end
 function init(mode,lprfnc)
 	--用户应用脚本中必须定义PROJECT和VERSION两个全局变量，否则会死机重启，如何定义请参考各个demo中的main.lua
 	assert(base.PROJECT and base.PROJECT ~= "" and base.VERSION and base.VERSION ~= "","Undefine PROJECT or VERSION")
-	require"net"
 	--设置AT命令的虚拟串口
 	uart.setup(uart.ATC,0,0,uart.PAR_NONE,uart.STOP_1)
 	print("init mode :",mode,lprfnc)
