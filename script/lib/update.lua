@@ -1,5 +1,3 @@
-module(...)
-
 --[[
 模块名称：远程升级
 模块功能：只在每次开机或者重启时，连接升级服务器，如果服务器存在新版本，lib和应用脚本远程升级
@@ -18,6 +16,7 @@ local sys  = require"sys"
 local link = require"link"
 local misc = require"misc"
 local common = require"common"
+module(...)
 
 --加载常用的全局函数至本地
 local print = base.print
