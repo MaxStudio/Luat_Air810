@@ -1,43 +1,69 @@
 module(...,package.seeall)
-require"config"
 
-package.path = "/?.lua;"..package.path
+--[[
+模块名称：参数管理
+模块功能：参数初始化、读写以及恢复出厂设置
+模块最后修改时间：2017.02.23
+]]
 
-configname,paraname = "/lua/config.lua","/para.lua"
-local para
+
+package.path = "/?.lua;".."/?.luae;"..package.path
+
+--[[
+configname: 存储默认参数配置的文件
+econfigname： 存储默认参数配置的加密文件
+paraname: 存储实时参数配置的文件
+para：实时参数表
+]]
+local configname,econfigname,paraname,para = "/lua/config.lua","/lua/config.luae","/para.lua"
 local ssub,sgsub = string.sub,string.gsub
 
+--[[
+函数名：print
+功能  ：打印接口，此文件中的所有打印都会加上nvm前缀
+参数  ：无
+返回值：无
+]]
 local function print(...)
 	_G.print("nvm",...)
 end
 
+--[[
+函数名：restore
+功能  ：参数恢复出厂设置，把configname文件中内容复制到paraname文件中
+参数  ：无
+返回值：无
+]]
 function restore()
-	print("restore")
-	local verflg = para and get("verflg") or "DEBUG"
-	local darkflg
-	if para then
-		darkflg = get("darkflg")
-	else
-		darkflg = true
-	end
 	local fpara,fconfig = io.open(paraname,"wb"),io.open(configname,"rb")
+	if not fconfig then fconfig = io.open(econfigname,"rb") end
 	fpara:write(fconfig:read("*a"))
 	fpara:close()
 	fconfig:close()
 	para = config
-	set("verflg",verflg)
-	set("darkflg",darkflg)
 end
 
+--[[
+函数名：serialize
+功能  ：根据不同的数据类型，按照不同的格式，写格式化后的数据到文件中
+参数  ：
+		pout：文件句柄
+		o：数据
+返回值：无
+]]
 local function serialize(pout,o)
 	if type(o) == "number" then
+		--number类型，直接写原始数据
 		pout:write(o)
 	elseif type(o) == "string" then
+		--string类型，原始数据左右各加上双引号写入
 		pout:write(string.format("%q", o))
 	elseif type(o) == "boolean" then
+		--boolean类型，转化为string写入
 		pout:write(tostring(o))
 	elseif type(o) == "table" then
-		pout:write("{\r\n")
+		--table类型，加换行，大括号，中括号，双引号写入
+		pout:write("{\n")
 		for k,v in pairs(o) do
 			if type(k) == "number" then
 				pout:write(" [", k, "] = ")
@@ -47,32 +73,38 @@ local function serialize(pout,o)
 				error("cannot serialize table key " .. type(o))
 			end
 			serialize(pout,v)
-			pout:write(",\r\n")
+			pout:write(",\n")
 		end
-		pout:write("}\r\n")
+		pout:write("}\n")
 	else
 		error("cannot serialize a " .. type(o))
 	end
 end
 
+--[[
+函数名：upd
+功能  ：更新实时参数表
+参数  ：无
+返回值：无
+]]
 local function upd()
-	--local f = io.open(paraname,"ab")
 	for k,v in pairs(config) do
 		if k ~= "_M" and k ~= "_NAME" and k ~= "_PACKAGE" then
 			if para[k] == nil then
-				--f:write(k, " = ")
-				--serialize(f,v)
-				--f:write("\r\n")
 				para[k] = v
 			end			
 		end
 	end
-	--f:close()
 end
 
-local function load()	
+--[[
+函数名：load
+功能  ：初始化参数
+参数  ：无
+返回值：无
+]]
+local function load()
 	local f = io.open(paraname,"rb")
-	print("load",f)
 	if not f or f:read("*a") == "" then
 		if f then f:close() end
 		restore()
@@ -80,7 +112,7 @@ local function load()
 	end
 	f:close()
 	
-	f,para = pcall(require,"para")
+	f,para = pcall(require,string.match(paraname,"(/(.+)%.lua)"))
 	if not f then
 		restore()
 		return
@@ -88,38 +120,70 @@ local function load()
 	upd()
 end
 
+--[[
+函数名：save
+功能  ：保存参数文件
+参数  ：
+		s：是否真正保存，true保存，false或者nil不保存
+返回值：无
+]]
 local function save(s,flu)
 	if not s then return end
 	local f = io.open(paraname,"wb")
 
-	f:write("module(...)\r\n")
+	f:write("module(...)\n")
 
 	for k,v in pairs(para) do
 		if k ~= "_M" and k ~= "_NAME" and k ~= "_PACKAGE" then
 			f:write(k, " = ")
 			serialize(f,v)
-			f:write("\r\n")
+			f:write("\n")
 		end
 	end
 
 	if flu then f:flush() end
-	f:close()	
+	f:close()
 end
 
+--[[
+函数名：set
+功能  ：设置某个参数的值
+参数  ：
+		k：参数名
+		v：将要设置的新值
+		r：设置原因，只有传入了有效参数，并且v的新值和旧值发生了改变，才会抛出PARA_CHANGED_IND消息
+		s：是否需要写入到文件系统中，false不写入，其余的都写入
+返回值：true
+]]
 function set(k,v,r,s)
 	local bchg = true
-	if type(v) ~= "table" then
+	if type(v) == "table" then
+		for kk,vv in pairs(para[k]) do
+			if vv ~= v[kk] then bchg = true break end
+		end
+	else
 		bchg = (para[k] ~= v)
 	end
 	print("set",bchg,k,v,r,s)
 	if bchg then		
 		para[k] = v
-		save(s or s==nil)		
+		save(s or s==nil)
 	end
 	if r then sys.dispatch("PARA_"..(bchg and "CHANGED" or "SET").."_IND",k,v,r) end
 	return true
 end
 
+--[[
+函数名：sett
+功能  ：设置table类型的参数中的某一项的值
+参数  ：
+		k：table参数名
+		kk：table参数中的键值
+		v：将要设置的新值
+		r：设置原因，只有传入了有效参数，并且v的新值和旧值发生了改变，才会抛出TPARA_CHANGED_IND消息
+		s：是否需要写入到文件系统中，false不写入，其余的都写入
+返回值：true
+]]
 function sett(k,kk,v,r,s)
 	print("sett",k)
 	--if para[k][kk] ~= v then
@@ -130,10 +194,23 @@ function sett(k,kk,v,r,s)
 	return true
 end
 
+--[[
+函数名：flush
+功能  ：把参数从内存写到文件中
+参数  ：无
+返回值：无
+]]
 function flush(s)
 	save(true,s)
 end
 
+--[[
+函数名：get
+功能  ：读取参数值
+参数  ：
+		k：参数名
+返回值：参数值
+]]
 function get(k)
 	if type(para[k]) == "table" then
 		local tmp = {}
@@ -146,183 +223,28 @@ function get(k)
 	end
 end
 
+--[[
+函数名：gett
+功能  ：读取table类型的参数中的某一项的值
+参数  ：
+		k：table参数名
+		kk：table参数中的键值
+返回值：参数值
+]]
 function gett(k,kk)
 	return para[k][kk]
 end
 
---tm:18004(星期4的18：00) stm:1111100!18001900(周一到周五的18:00到19:00)
-function isilent(t)
-	local tm,i,wday,stm = t or (ssub(misc.getclockstr(),7,10)..misc.getweek())
-	wday = tonumber(ssub(tm,5,5))
-	for i=1,#get("silentime") do
-		stm = gett("silentime",i)
-		if stm and stm ~= "" and ssub(stm,wday,wday)=="1" then
-			local bgn,ed,cur = tonumber(ssub(stm,9,12)),tonumber(ssub(stm,13,16)),tonumber(ssub(tm, 1,4))
-			if (cur>=bgn and cur<=ed and bgn<=ed) or ((cur>=bgn or cur<=ed) and bgn>=ed) then
-				return true
-			end
-		end
-	end
+--[[
+函数名：init
+功能  ：初始化参数存储模块
+参数  ：
+		dftcfgfile：默认配置文件
+返回值：无
+]]
+function init(dftcfgfile)
+	pcall(require,string.match(dftcfgfile,"(.+)%.lua"))
+	configname,econfigname = "/lua/"..dftcfgfile,"/lua/"..dftcfgfile.."e"
+	--初始化配置文件，从文件中把参数读取到内存中
+	load()
 end
-
-function permissible(typ,id)
-	local info,i = get("contacts")
-	if typ=="pb" then
-		for i=1,#info do
-			if get("whitenumswitch")==0 then
-				if isilent() then
-					if (info[i].typ==0 or info[i].typ==1 or info[i].typ==2 or info[i].typ==4) and pbnumatch(id,info[i]) then
-						if info[i].typ==0 then return true end
-					end	
-				else
-					return true
-				end							
-			else
-				if (info[i].typ==0 or info[i].typ==1 or info[i].typ==2 or info[i].typ==4) and pbnumatch(id,info[i]) then
-					if info[i].typ==0 then return true end
-					return isilent()~=true
-				end
-			end			
-		end
-	elseif typ=="chat" then
-		for i=1,#info do
-			if info[i].typ>=0 and info[i].typ<=3 and string.match(id,info[i].id.."$") then
-				if info[i].typ==0 then return true end
-				return isilent()~=true
-			end		
-		end
-	end
-end
-
-function getsilstr(id)
-	local item,i = gett("silentime",id)
-	local day,tm,dstr,tstr = ssub(item,1,7),ssub(item,9,16),"星期:","时间段:"
-	if not item or item=="" or day=="0000000" then
-		return "无效","空"
-	end
-	for i=1,7 do
-		dstr = dstr..(ssub(day,i,i)=="1" and i or "")
-	end
-	tstr = tstr..ssub(tm,1,4).."-"..ssub(tm,5,8)
-	return dstr,tstr
-end
-
-function ntclen(str)
-	local i,len1,len2,len3 = 1,0,0,0
-	while i <= string.len(str) do
-		if string.byte(str,i)<=0x7F then
-			i = i + 1
-		else
-			i = i + 2
-		end
-		if i <= 9 then
-			len1 = i - 1
-		elseif i <= len1+9 then 
-			len2 = i - 1
-		elseif i <= len2+9 then
-			len3 = i - 1 
-		end
-	end
-	return len1,len2,len3
-end
-
-function getntcstr(id)
-	local item,i = gett("notice",id)
-	local day,tm,dstr,tstr,nstr = ssub(item,2,8),ssub(item,10,13),"星期:","时间:","内容:"..ssub(item,15,-1)
-	nstr = sgsub(nstr, "\\n", "");
-	local len1,len2,len3 = ntclen(ssub(nstr,6,-1))
-	if len3 == 0 and len2 ~= 0 then
-		len3 = len2
-	elseif len3 == 0 and len2 == 0 then
-		len3 = len1
-	end
-	if not item or item=="" or day=="0000000" then
-		return "无效","空",ssub(nstr,1,len3+5)
-	end
-	for i=1,7 do
-		dstr = dstr..(ssub(day,i,i)=="1" and i or "")
-	end
-	tstr = tstr..tm	
-	return tstr,dstr,ssub(nstr,1,len3+5)
-end
-
-function getcontactstr(id)
-	local item,pbnum = gett("contacts",id)
-	print("getcontactstr",item)
-	if not item then
-		return "无效"
-	end
-	if type(item.phone)=="table" then
-		local i
-		for i=1,#item.phone do
-			pbnum = (pbnum or "")..item.phone[i]..((i==#item.phone) and "" or ",")
-		end
-	end
-	if item.typ==0 then
-		return "管理员,"..((item.nm or "")..",")..(pbnum or (item.id or ""))
-	elseif item.typ==1 then
-		return "非管理员,"..((item.nm or "")..",")..(pbnum or (item.id or ""))
-	elseif item.typ==2 then
-		return "手表好友,"..((item.nm or "")..",")..(pbnum or (item.phone or ""))
-	elseif item.typ==3 then
-		return "群组,"..(item.nm or "")
-	elseif item.typ==4 then
-		return "白名单,"..((item.nm or "")..",")..(pbnum or (item.id or ""))
-	else
-		return "类型错误:"..item.typ
-	end
-end
-
-function getchtunrd(cid)
-	local cht,cnt,k,v = nvm.gett("chats",cid) or {},0	
-	for k,v in pairs(cht) do		
-		cnt = cnt+(v.unrd and 1 or 0)
-	end
-	return cnt
-end
-
-function delcht(id)
-	local chts,k,v = get("chats")
-	if chts[id] and #chts[id]>0 then		
-		for k,v in pairs(chts[id]) do
-			if v.pth then
-				os.remove(v.pth)
-				print("os.remove",v.pth)
-			end
-		end
-		chts[id] = nil
-		set("chats",chts)
-	end
-end
-
-function pbnumatch(num,item)
-	if string.match(num,item.id.."$") then return true end
-	if type(item.phone)=="table" then
-		local j
-		for j=1,#item.phone do
-			if num==item.phone[j] then return true end
-		end
-	elseif type(item.phone)=="string" then
-		if string.match(num,item.phone.."$") then return true end
-	end 
-end
-
-function isosnum(num)
-	local info = get("contacts")
-	for i=1,#info do
-		if (info[i].typ==0 or info[i].typ==1) and pbnumatch(num,info[i]) then
-			return true
-		end
-	end
-end
-
-function ispbnum(num)
-	local info = get("contacts")
-	for i=1,#info do
-		if (info[i].typ==0 or info[i].typ==1 or info[i].typ==2 or info[i].typ==4) and pbnumatch(num,info[i]) then
-			return true
-		end
-	end
-end
-
-load()
