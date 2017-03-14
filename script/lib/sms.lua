@@ -1,3 +1,5 @@
+module("sms")
+
 --[[
 模块名称：短信功能
 模块功能：短信发送，接收，读取，删除
@@ -13,7 +15,6 @@ local ril = require "ril"
 local common = require "common"
 local rtos = require "rtos"
 local bit = require"bit"
-module("sms")
 
 --加载常用的全局函数至本地
 local print = base.print
@@ -26,13 +27,13 @@ local ready,isn,tlongsms = false,255,{}
 local ssub,slen,sformat,smatch = string.sub,string.len,string.format,string.match
 
 --[[
-函数名：send
+函数名：_send
 功能  ：发送短信
 参数  ：num,号码
         data:短信内容
 返回值：true：发送成功，false发送失败
 ]]
-function send(num,data)
+local function _send(num,data)
 	local numlen,datalen,pducnt,pdu,pdulen,udhi = sformat("%02X",slen(num)),slen(data)/2,1,"","",""
 	if not ready then return false end
 	
@@ -95,13 +96,13 @@ function delete(pos)
 end
 
 Charmap = {[0]=0x40,0xa3,0x24,0xa5,0xe8,0xE9,0xF9,0xEC,0xF2,0xC7,0x0A,0xD8,0xF8,0x0D,0xC5,0xE5
-          ,0x0394,0x5F,0x03A6,0x0393,0x039B,0x03A9,0x03A0,0x03A8,0x03A3,0x0398,0x039E,0x1B,0xC6,0xE5,0xDF,0xA9
-		  ,0x20,0x21,0x22,0x23,0xA4,0x25,0x26,0x27,0x28,0x29,0x2A,0x2B,0x2C,0x2D,0x2E,0x2F
-		  ,0x30,0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x38,0x39,0x3A,0x3B,0x3C,0x3D,0x3E,0x3F
-		  ,0xA1,0x41,0x42,0x43,0x44,0x45,0x46,0x47,0x48,0x49,0x4A,0x4B,0x4C,0x4D,0x4E,0x4F
-		  ,0X50,0x51,0x52,0x53,0x54,0x55,0x56,0x57,0x58,0x59,0x5A,0xC4,0xD6,0xD1,0xDC,0xA7
-		  ,0xBF,0x61,0x62,0x63,0x64,0x65,0x66,0x67,0x68,0x69,0x6A,0x6B,0x6C,0x6D,0x6E,0x6F
-		  ,0x70,0x71,0x72,0x73,0x74,0x75,0x76,0x77,0x78,0x79,0x7A,0xE4,0xF6,0xF1,0xFC,0xE0}
+  ,0x0394,0x5F,0x03A6,0x0393,0x039B,0x03A9,0x03A0,0x03A8,0x03A3,0x0398,0x039E,0x1B,0xC6,0xE5,0xDF,0xA9
+  ,0x20,0x21,0x22,0x23,0xA4,0x25,0x26,0x27,0x28,0x29,0x2A,0x2B,0x2C,0x2D,0x2E,0x2F
+  ,0x30,0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x38,0x39,0x3A,0x3B,0x3C,0x3D,0x3E,0x3F
+  ,0xA1,0x41,0x42,0x43,0x44,0x45,0x46,0x47,0x48,0x49,0x4A,0x4B,0x4C,0x4D,0x4E,0x4F
+  ,0X50,0x51,0x52,0x53,0x54,0x55,0x56,0x57,0x58,0x59,0x5A,0xC4,0xD6,0xD1,0xDC,0xA7
+  ,0xBF,0x61,0x62,0x63,0x64,0x65,0x66,0x67,0x68,0x69,0x6A,0x6B,0x6C,0x6D,0x6E,0x6F
+  ,0x70,0x71,0x72,0x73,0x74,0x75,0x76,0x77,0x78,0x79,0x7A,0xE4,0xF6,0xF1,0xFC,0xE0}
 
 Charmapctl = {[10]=0x0C,[20]=0x5E,[40]=0x7B,[41]=0x7D,[47]=0x5C,[60]=0x5B,[61]=0x7E
 			 ,[62]=0x5D,[64]=0x7C,[101]=0xA4}
@@ -169,7 +170,7 @@ function gsm7bitdecode(data,longsms)
 		nleft = bit.rshift(tmpdata, 7-nbyte)
 		nbyte = nbyte+1
 		ucslen = ucslen+1
-    
+
 		if nbyte == 7 then
 			if olddat==27 then
 				if Charmapctl[nleft] then--特殊字符
@@ -409,3 +410,156 @@ ril.regurc("+CMTI",urc)
 ril.regrsp("+CMGR",rsp)
 ril.regrsp("+CMGD",rsp)
 ril.regrsp("+CMGS",rsp)
+
+--短信发送缓冲表最大个数
+local SMS_SEND_BUF_MAX_CNT = 10
+--短信发送间隔，单位毫秒
+local SMS_SEND_INTERVAL = 3000
+--短信发送缓冲表
+local tsmsnd = {}
+
+--[[
+函数名：sndnxt
+功能  ：发送短信发送缓冲表中的第一条短信
+参数  ：无
+返回值：无
+]]
+local function sndnxt()
+	if #tsmsnd>0 then
+		_send(tsmsnd[1].num,tsmsnd[1].data)
+	end
+end
+
+--[[
+函数名：sendcnf
+功能  ：SMS_SEND_CNF消息的处理函数，异步通知短信发送结果
+参数  ：
+        result：短信发送结果，true为成功，false或者nil为失败
+返回值：无
+]]
+local function sendcnf(result)
+	print("sendcnf",result)
+	local num,data,cb = tsmsnd[1].num,tsmsnd[1].data,tsmsnd[1].cb
+	--从短信发送缓冲表中移除当前短信
+	table.remove(tsmsnd,1)
+	--如果有发送回调函数，执行回调
+	if cb then cb(result,num,data) end
+	--如果短信发送缓冲表中还有短信，则SMS_SEND_INTERVAL毫秒后，继续发送下条短信
+	if #tsmsnd>0 then sys.timer_start(sndnxt,SMS_SEND_INTERVAL) end
+end
+
+--[[
+函数名：send
+功能  ：发送短信
+参数  ：
+    num：短信接收方号码，ASCII码字符串格式
+		data：短信内容，GB2312编码的字符串
+		cb：短信发送结果异步返回时使用的回调函数，可选
+		idx：插入短信发送缓冲表的位置，可选，默认是插入末尾
+返回值：返回true，表示调用接口成功（并不是短信发送成功，短信发送结果，通过sendcnf返回，如果有cb，会通知cb函数）；返回false，表示调用接口失败
+]]
+function send(num,data,cb,idx)
+	--号码或者内容非法
+	if not num or num=="" or not data or data=="" then return end
+	--短信发送缓冲表已满
+	if #tsmsnd>=SMS_SEND_BUF_MAX_CNT then return end
+	local dat = common.binstohexs(common.gb2312toucs2be(data))
+	--如果指定了插入位置
+	if idx then
+		table.insert(tsmsnd,idx,{num=num,data=dat,cb=cb})
+	--没有指定插入位置，插入到末尾
+	else
+		table.insert(tsmsnd,{num=num,data=dat,cb=cb})
+	end
+	--如果短信发送缓冲表中只有一条短信，立即触发短信发送动作
+	if #tsmsnd==1 then _send(num,dat) return true end
+end
+
+
+--短信接收位置表
+local tnewsms = {}
+
+--[[
+函数名：readsms
+功能  ：读取短信接收位置表中的第一条短信
+参数  ：无
+返回值：无
+]]
+local function readsms()
+	if #tnewsms ~= 0 then
+		read(tnewsms[1])
+	end
+end
+
+--[[
+函数名：newsms
+功能  ：SMS_NEW_MSG_IND（未读短信或者新短信主动上报的消息）消息的处理函数
+参数  ：
+        pos：短信存储位置
+返回值：无
+]]
+local function newsms(pos)
+	--存储位置插入到短信接收位置表中
+	table.insert(tnewsms,pos)
+	--如果只有一条短信，则立即读取
+	if #tnewsms == 1 then
+		readsms()
+	end
+end
+
+--新短信的用户处理函数
+local newsmscb
+--[[
+函数名：regnewsmscb
+功能  ：注册新短信的用户处理函数
+参数  ：
+        cb：用户处理函数名
+返回值：无
+]]
+function regnewsmscb(cb)
+	newsmscb = cb
+end
+
+--[[
+函数名：readcnf
+功能  ：SMS_READ_CNF消息的处理函数，异步返回读取的短信内容
+参数  ：
+        result：短信读取结果，true为成功，false或者nil为失败
+		num：短信号码，ASCII码字符串格式
+		data：短信内容，UCS2大端格式的16进制字符串
+		pos：短信的存储位置，暂时没用
+		datetime：短信日期和时间，ASCII码字符串格式
+		name：短信号码对应的联系人姓名，暂时没用
+返回值：无
+]]
+local function readcnf(result,num,data,pos,datetime,name)
+	--过滤号码中的86和+86
+	local d1,d2 = string.find(num,"^([%+]*86)")
+	if d1 and d2 then
+		num = string.sub(num,d2+1,-1)
+	end
+	--删除短信
+	delete(tnewsms[1])
+	--从短信接收位置表中删除此短信的位置
+	table.remove(tnewsms,1)
+	if data then
+		--短信内容转换为GB2312字符串格式
+		data = common.ucs2betogb2312(common.hexstobins(data))
+		--用户应用程序处理短信
+		if newsmscb then newsmscb(num,data,datetime) end
+	end
+	--继续读取下一条短信
+	readsms()
+end
+
+--短信模块的内部消息处理表
+local smsapp =
+{
+	SMS_NEW_MSG_IND = newsms, --收到新短信，sms.lua会抛出SMS_NEW_MSG_IND消息
+	SMS_READ_CNF = readcnf, --调用sms.read读取短信之后，sms.lua会抛出SMS_READ_CNF消息
+	SMS_SEND_CNF = sendcnf, --调用sms.send发送短信之后，sms.lua会抛出SMS_SEND_CNF消息
+	SMS_READY = sndnxt, --底层短信模块准备就绪
+}
+
+--注册消息处理函数
+sys.regapp(smsapp)
