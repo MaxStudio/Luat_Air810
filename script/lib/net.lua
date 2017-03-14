@@ -1,5 +1,3 @@
-module("net")
-
 --[[
 模块名称：网络管理
 模块功能：信号查询、GSM网络状态查询、网络指示灯控制、临近小区信息查询
@@ -13,6 +11,7 @@ local sys = require "sys"
 local ril = require "ril"
 local pio = require"pio"
 local sim = require"sim"
+module("net")
 
 --加载常用的全局函数至本地
 local dispatch = sys.dispatch
