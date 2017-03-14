@@ -1,3 +1,5 @@
+module("ril")
+
 --[[
 模块名称：虚拟串口AT命令交互管理
 模块功能：AT交互
@@ -11,7 +13,6 @@ local string = require"string"
 local uart = require"uart"
 local rtos = require"rtos"
 local sys = require"sys"
-module("ril")
 
 --加载常用的全局函数至本地
 local setmetatable = base.setmetatable
@@ -28,20 +29,18 @@ local transparentmode
 --透传模式下，虚拟串口数据接收的处理函数
 local rcvfunc
 
--- 常量
+--执行AT命令后1分钟无反馈，判定at命令执行失败，则重启软件
 local TIMEOUT,RETRYTIMEOUT,RETRY_MAX = 60000,1000,5 --1分钟无反馈 判定at命令执行失败
 
---AT命令的应答类型
---NORESULT：收到的应答数据当做urc通知处理，如果发送的AT命令不处理应答或者没有设置类型，默认为此类型
---NUMBERIC：纯数字类型；例如发送AT+CGSN命令，应答的内容为：862991527986589\r\nOK，此类型指的是862991527986589这一部分为纯数字类型
---SLINE：有前缀的单行字符串类型；例如发送AT+CSQ命令，应答的内容为：+CSQ: 23,99\r\nOK，此类型指的是+CSQ: 23,99这一部分为单行字符串类型
---MLINE：有前缀的多行字符串类型；例如发送AT+CMGR=5命令，应答的内容为：+CMGR: 0,,84\r\n0891683108200105F76409A001560889F800087120315123842342050003590404590D003A59\r\nOK，此类型指的是OK之前为多行字符串类型
---STRING：无前缀的字符串类型，例如发送AT+ATWMFT=99命令，应答的内容为：SUCC\r\nOK，此类型指的是SUCC
-local NORESULT = 0
-local NUMBERIC = 1
-local SLINE = 2
-local MLINE = 3
-local STRING = 4
+--[[
+AT命令的应答类型:
+  NORESULT: 收到的应答数据当做urc通知处理，如果发送的AT命令不处理应答或者没有设置类型，默认为此类型
+  NUMBERIC: 纯数字类型；例如发送AT+CGSN命令，应答的内容为：862991527986589\r\nOK，此类型指的是862991527986589这一部分为纯数字类型
+  SLINE: 有前缀的单行字符串类型；例如发送AT+CSQ命令，应答的内容为：+CSQ: 23,99\r\nOK，此类型指的是+CSQ: 23,99这一部分为单行字符串类型
+  MLINE: 有前缀的多行字符串类型；例如发送AT+CMGR=5命令，应答的内容为：+CMGR: 0,,84\r\n0891683108200105F76409A001560889F800087120315123842342050003590404590D003A59\r\nOK，此类型指的是OK之前为多行字符串类型
+  STRING: 无前缀的字符串类型，例如发送AT+ATWMFT=99命令，应答的内容为：SUCC\r\nOK，此类型指的是SUCC
+]]
+local NORESULT,NUMBERIC,SLINE,MLINE,STRING = 0,1,2,3,4
 
 --AT命令的应答类型表，预置了如下几项
 local RILCMD = {
@@ -74,7 +73,7 @@ local cmdqueue = {
 	"AT+VER",
 	"AT+BLVER"
 }
--- 当前正在执行的命令,参数,反馈回调,延迟执行,命令头,类型,反馈格式
+-- 当前正在执行的AT命令,参数,反馈回调,延迟执行时间,重试,命令头,类型,反馈格式
 local currcmd,currarg,currsp,curdelay,curetry,cmdhead,cmdtype,rspformt
 -- 反馈结果,中间信息,结果信息
 local result,interdata,respdata
@@ -255,13 +254,15 @@ end
 local function procatc(data)
 	print("atc:",data)
 	
-        -- 继续接收多行反馈直至出现OK为止
+  -- 继续接收多行反馈直至出现OK为止
 	if interdata and cmdtype == MLINE then
 		-- 多行反馈的命令如果接收到中间数据说明执行成功了,判定之后的数据结束就是OK
 		if data ~= "OK\r\n" then
-			if sfind(data,"\r\n",-2) then -- 去掉最后的换行符
+    -- 去掉最后的换行符
+			if sfind(data,"\r\n",-2) then
 				data = string.sub(data,1,-3)
 			end
+			--拼接到中间数据
 			interdata = interdata .. "\r\n" .. data
 			return
 		end
@@ -270,16 +271,16 @@ local function procatc(data)
 	if urcfilter then
 		data,urcfilter = urcfilter(data)
 	end
-
-	if sfind(data,"\r\n",-2) then -- 若最后两个字节是\r\n则删掉
+  -- 若最后两个字节是\r\n则删掉
+	if sfind(data,"\r\n",-2) then
 		data = string.sub(data,1,-3)
 	end
-
+	--数据为空
 	if data == "" then
 		return
 	end
 
-        -- 当前无命令在执行则判定为urc
+  -- 当前无命令在执行则判定为urc
 	if currcmd == nil then
 		urc(data)
 		return
@@ -302,6 +303,7 @@ local function procatc(data)
 	elseif data == "NO CARRIER" and currcmd=="ATA" then
     result = false
     respdata = data
+  --需要继续输入参数的AT命令应答
 	elseif data == "> " then
 		if cmdhead == "+CMGS" then -- 根据提示符发送短信或者数据
 			print("send:",currarg)
@@ -551,4 +553,3 @@ function sendtransparentdata(data)
 	return true
 end
 
-sys.timer_start(kickoff,3000)
