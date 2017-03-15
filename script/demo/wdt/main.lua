@@ -1,4 +1,4 @@
-PROJECT = "wdt-demo"
+PROJECT = "wdt demo"
 VERSION = "1.0.0"
 require"sys"
 --加载硬件看门狗功能模块
