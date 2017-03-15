@@ -13,7 +13,7 @@ local UART_ID = 1
 ∑µªÿ÷µ£∫Œﬁ
 ]]
 local function print(...)
-	_G.print("test",...)
+	_G.print("uartat",...)
 end
 
 --[[
