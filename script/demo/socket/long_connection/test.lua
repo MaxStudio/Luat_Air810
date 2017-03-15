@@ -1,3 +1,4 @@
+require"socket"
 module(...,package.seeall)
 
 --[[
@@ -6,13 +7,12 @@ module(...,package.seeall)
 2、连接成功后，每隔10秒钟发送一次心跳包"heart data\r\n"到后台；每隔20秒钟发送一次位置包"loc data\r\n"到后台
 3、与后台保持长连接，断开后主动再去重连，连接成功仍然按照第2条发送数据
 4、收到后台的数据时，在rcv函数中打印出来
-测试时请搭建自己的服务器，并且修改下面的PROT，ADDR，PORT 
+测试时请搭建自己的服务器，并且修改下面的PROT，ADDR，PORT，支持域名和IP地址
 
-此例子为长连接，只要是软件上能够检测到的网络异常，可以自动去重新连接；
-有时会出现检测不到的异常，对于这种情况，我们一般按照如下方式处理，设置一个心跳包，每隔A时间发送一次到后台，后台回复应答，如果连续n倍的A时间都没有收到后台的任何数据，则认为出现了未知的网络异常，此时调用link.shut主动断开，然后自动重连
+此例子为长连接，只要是软件上能够检测到的网络异常，可以自动去重新连接
 ]]
 
-local ssub,schar,smatch,sbyte = string.sub,string.char,string.match,string.byte
+local ssub,schar,smatch,sbyte,slen = string.sub,string.char,string.match,string.byte,string.len
 --测试时请搭建自己的服务器
 local SCK_IDX,PROT,ADDR,PORT = 1,"TCP","www.your-server.com",8000
 --linksta:与后台的socket连接状态
@@ -24,8 +24,8 @@ local RECONN_MAX_CNT,RECONN_PERIOD,RECONN_CYCLE_MAX_CNT,RECONN_CYCLE_PERIOD = 3,
 --reconncnt:当前连接周期内，已经重连的次数
 --reconncyclecnt:连续多少个连接周期，都没有连接成功
 --一旦连接成功，都会复位这两个标记
---reconning:是否在尝试连接
-local reconncnt,reconncyclecnt,reconning = 0,0
+--conning:是否在尝试连接
+local reconncnt,reconncyclecnt,conning = 0,0
 
 --[[
 函数名：print
@@ -46,7 +46,7 @@ end
 返回值：调用发送接口的结果（并不是数据发送是否成功的结果，数据发送是否成功的结果在ntfy中的SEND事件中通知），true为成功，其他为失败
 ]]
 function snd(data,para)
-	return linkapp.scksnd(SCK_IDX,data,para)
+	return socket.send(SCK_IDX,data,para)
 end
 
 
@@ -138,19 +138,19 @@ end
 返回值：无
 ]]
 local function reconn()
-	print("reconn",reconncnt,reconning,reconncyclecnt)
+	print("reconn",reconncnt,conning,reconncyclecnt)
 	--conning表示正在尝试连接后台，一定要判断此变量，否则有可能发起不必要的重连，导致reconncnt增加，实际的重连次数减少
-	if reconning then return end
+	if conning then return end
 	--一个连接周期内的重连
 	if reconncnt < RECONN_MAX_CNT then		
 		reconncnt = reconncnt+1
 		link.shut()
-		connect(linkapp.NORMAL)
+		connect()
 	--一个连接周期的重连都失败
 	else
 		reconncnt,reconncyclecnt = 0,reconncyclecnt+1
 		if reconncyclecnt >= RECONN_CYCLE_MAX_CNT then
-			dbg.restart("connect fail")
+			sys.restart("connect fail")
 		end
 		sys.timer_start(reconn,RECONN_CYCLE_PERIOD*1000)
 	end
@@ -168,9 +168,9 @@ end
 ]]
 function ntfy(idx,evt,result,item)
 	print("ntfy",evt,result,item)
-	--连接结果
+	--连接结果(调用socket.connect后的异步事件)
 	if evt == "CONNECT" then
-		reconning = false
+		conning = false
 		--连接成功
 		if result then
 			reconncnt,reconncyclecnt,linksta = 0,0,true
@@ -185,7 +185,7 @@ function ntfy(idx,evt,result,item)
 			--RECONN_PERIOD秒后重连
 			sys.timer_start(reconn,RECONN_PERIOD*1000)
 		end	
-	--数据发送结果
+	--数据发送结果(调用socket.send后的异步事件)
 	elseif evt == "SEND" then
 		if item then
 			sndcb(item,result)
@@ -196,7 +196,13 @@ function ntfy(idx,evt,result,item)
 		sys.timer_stop(heartrpt)
 		sys.timer_stop(locrpt)
 		reconn()
-	--连接主动断开
+	--连接主动断开(调用link.shut后的异步事件)
+	elseif evt == "STATE" and result == "SHUTED" then
+		linksta = false
+		sys.timer_stop(heartrpt)
+		sys.timer_stop(locrpt)
+		reconn()
+	--连接主动断开(调用socket.disconnect后的异步事件)
 	elseif evt == "DISCONNECT" then
 		linksta = false
 		sys.timer_stop(heartrpt)
@@ -214,11 +220,11 @@ end
 函数名：rcv
 功能  ：socket接收数据的处理函数
 参数  ：
-        id ：linkapp中维护的socket idx，跟调用linkapp.sckconn时传入的第一个参数相同，程序可以忽略不处理
+        idx ：linkapp中维护的socket idx，跟调用linkapp.sckconn时传入的第一个参数相同，程序可以忽略不处理
         data：接收到的数据
 返回值：无
 ]]
-function rcv(id,data)
+function rcv(idx,data)
 	print("rcv",data)
 end
 
@@ -231,9 +237,9 @@ end
 参数  ：无
 返回值：无
 ]]
-function connect()	
-	linkapp.sckconn(SCK_IDX,linkapp.NORMAL,PROT,ADDR,PORT,ntfy,rcv)
-	reconning = true
+function connect()
+	socket.connect(SCK_IDX,PROT,ADDR,PORT,ntfy,rcv)
+	conning = true
 end
 
 connect()
