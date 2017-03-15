@@ -1,3 +1,4 @@
+require"socket"
 module(...,package.seeall)
 
 --[[
@@ -6,7 +7,7 @@ module(...,package.seeall)
 2、连接成功后，循环“读取mcu通过串口发送过来的数据，每次最多发送1K字节”
 3、与后台保持长连接，断开后主动再去重连，连接成功仍然按照第2条发送数据
 4、收到后台的数据时，在rcv函数中打印出来，并且通过串口透传给mcu
-测试时请搭建自己的后台服务器，并且修改下面的PROT，ADDR，PORT 
+测试时请搭建自己的服务器，并且修改下面的PROT，ADDR，PORT，支持域名和IP地址
 
 此例子为长连接，只要是软件上能够检测到的网络异常，可以自动去重新连接
 ]]
@@ -47,7 +48,7 @@ end
 返回值：调用发送接口的结果（并不是数据发送是否成功的结果，数据发送是否成功的结果在ntfy中的SEND事件中通知），true为成功，其他为失败
 ]]
 function snd(data,para)
-	return linkapp.scksnd(SCK_IDX,data,para)
+	return socket.send(SCK_IDX,data,para)
 end
 
 --[[
@@ -67,8 +68,8 @@ end
 函数名：sndcb
 功能  ：数据发送结果处理
 参数  ：  
-        result： bool类型，发送结果，true为成功，其他为失败
 		item：table类型，{data=,para=}，消息回传的参数和数据，例如调用linkapp.scksnd时传入的第2个和第3个参数分别为dat和par，则item={data=dat,para=par}
+		result： bool类型，发送结果，true为成功，其他为失败
 返回值：无
 ]]
 local function sndcb(item,result)
@@ -96,7 +97,7 @@ end
 参数  ：无
 返回值：无
 ]]
-function reconn()
+local function reconn()
 	print("reconn",reconncnt,conning,reconncyclecnt)
 	--conning表示正在尝试连接后台，一定要判断此变量，否则有可能发起不必要的重连，导致reconncnt增加，实际的重连次数减少
 	if conning then return end
@@ -109,7 +110,7 @@ function reconn()
 	else
 		reconncnt,reconncyclecnt = 0,reconncyclecnt+1
 		if reconncyclecnt >= RECONN_CYCLE_MAX_CNT then
-			dbg.restart("connect fail")
+			sys.restart("connect fail")
 		end
 		sys.timer_start(reconn,RECONN_CYCLE_PERIOD*1000)
 	end
@@ -127,7 +128,7 @@ end
 ]]
 function ntfy(idx,evt,result,item)
 	print("ntfy",evt,result,item)
-	--连接结果
+	--连接结果(调用socket.connect后的异步事件)
 	if evt == "CONNECT" then
 		conning = false
 		--连接成功
@@ -142,7 +143,7 @@ function ntfy(idx,evt,result,item)
 			--RECONN_PERIOD秒后重连
 			sys.timer_start(reconn,RECONN_PERIOD*1000)
 		end	
-	--数据发送结果
+	--数据发送结果(调用socket.send后的异步事件)
 	elseif evt == "SEND" then
 		if item then
 			sndcb(item,result)
@@ -151,7 +152,11 @@ function ntfy(idx,evt,result,item)
 	elseif evt == "STATE" and result == "CLOSED" then
 		linksta = false
 		reconn()
-	--连接主动断开
+	--连接主动断开(调用link.shut后的异步事件)
+	elseif evt == "STATE" and result == "SHUTED" then
+		linksta = false
+		reconn()
+	--连接主动断开(调用socket.disconnect后的异步事件)
 	elseif evt == "DISCONNECT" then
 		linksta = false
 		reconn()		
@@ -186,8 +191,8 @@ end
 参数  ：无
 返回值：无
 ]]
-function connect()	
-	linkapp.sckconn(SCK_IDX,linkapp.NORMAL,PROT,ADDR,PORT,ntfy,rcv)
+function connect()
+	socket.connect(SCK_IDX,PROT,ADDR,PORT,ntfy,rcv)
 	conning = true
 end
 
