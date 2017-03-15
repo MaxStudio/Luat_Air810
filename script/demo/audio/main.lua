@@ -1,4 +1,4 @@
-PROJECT = "audio-demo"
+PROJECT = "audio demo"
 VERSION = "1.0.0"
 
 require"sys"
