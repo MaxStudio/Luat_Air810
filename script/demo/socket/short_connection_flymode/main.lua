@@ -3,9 +3,6 @@ VERSION = "1.0.0"
 require"sys"
 --关闭脚本中的所有trace打印
 --sys.opntrace(false)
-require"misc"
-require"link"
-require"linkapp"
 require"dbg"
 dbg.setup("udp","www.your-server.com",8000)
 require"update"
