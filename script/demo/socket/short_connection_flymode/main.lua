@@ -1,5 +1,6 @@
-PROJECT = "SOCKET_SHORT_CONNECTION_FLYMODE"
+PROJECT = "socket_short_connection_flymode demo"
 VERSION = "1.0.0"
+
 require"sys"
 --关闭脚本中的所有trace打印
 --sys.opntrace(false)
