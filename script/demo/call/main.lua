@@ -1,4 +1,4 @@
-PROJECT = "call-demo"
+PROJECT = "call demo"
 VERSION = "1.0.0"
 
 require"sys"
