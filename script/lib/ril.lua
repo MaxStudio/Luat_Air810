@@ -85,7 +85,7 @@ local result,interdata,respdata
 返回值：无
 ]]
 local function atimeout()
-	--重启软件
+	--命令响应超时自动重启系统
 	sys.restart("ril.atimeout_"..(currcmd or ""))
 end
 
@@ -526,6 +526,8 @@ function request(cmd,arg,onrsp,delay,retry)
 	--执行AT命令发送
 	sendat()
 end
+
+sys.timer_start(kickoff,3000)
 
 --[[
 函数名：setransparentmode
