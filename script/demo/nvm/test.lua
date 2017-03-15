@@ -1,3 +1,5 @@
+require"config"
+require"nvm"
 module(...,package.seeall)
 
 --[[
@@ -57,6 +59,9 @@ local procer =
 --注册消息处理函数
 sys.regapp(procer)
 
+--初始化参数管理模块
+nvm.init("config.lua")
+
 --打印出所有参数
 printAllPara()
 
@@ -86,4 +91,4 @@ sys.timer_start(nvm.set,5000,"tablePara",{"item2-1","item2-2","item2-3"},"tableP
 sys.timer_start(nvm.sett,6000,"tablePara",2,"item3-2","tablePara3")
 
 --恢复出厂设置,打印出所有参数
-sys.timer_start(restoreFunc,7000)
+sys.timer_start(restoreFunc,9000)

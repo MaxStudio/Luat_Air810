@@ -1,7 +1,7 @@
-PROJECT = "nvm-demo"
+PROJECT = "nvm demo"
 VERSION = "1.0.0"
+
 require"sys"
-require"nvm"
 require"test"
 
 sys.init(0,0)
