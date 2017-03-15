@@ -25,6 +25,7 @@ local ipairs = base.ipairs
 local type = base.type
 local pairs = base.pairs
 local assert = base.assert
+local tonumber = base.tonumber
 local isn = 65535
 
 --lib脚本版本号，只要lib中的任何一个脚本做了修改，都需要更新此版本号
@@ -401,6 +402,11 @@ local function checkcorever()
 	end
 	
 	local buildver = string.match(realver,"Luat_V(%d+)_Air810")
+	if buildver == nil then
+	 buildver=string.match(realver,"Luat_V(%d+)_AirM2M")
+	 if buildver ~= nil then print("checkcorever AMWatchDebug") end
+	end
+
 	--如果底层软件版本号格式错误
 	if not buildver then
 		appenderr("checkcorever[core ver format error]"..realver..";")
@@ -432,6 +438,7 @@ end
 function init(mode,lprfnc)
 	--用户应用脚本中必须定义PROJECT和VERSION两个全局变量，否则会死机重启，如何定义请参考各个demo中的main.lua
 	assert(base.PROJECT and base.PROJECT ~= "" and base.VERSION and base.VERSION ~= "","Undefine PROJECT or VERSION")
+	base.require"net"
 	--设置AT命令的虚拟串口
 	uart.setup(uart.ATC,0,0,uart.PAR_NONE,uart.STOP_1)
 	print("init mode :",mode,lprfnc)
