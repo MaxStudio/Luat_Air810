@@ -443,22 +443,11 @@ function init(mode,lprfnc)
 	uart.setup(uart.ATC,0,0,uart.PAR_NONE,uart.STOP_1)
 	print("init mode :",mode,lprfnc)
 	print("poweron reason:",rtos.poweron_reason(),mode,base.PROJECT,base.VERSION)
-	-- 模式0 充电器和闹钟开机都不注册网络
+	-- 模式0 充电器开机不注册网络
 	
-	-- 模式1 充电器和闹钟开机都注册网络
+	-- 模式1 充电器开机注册网络
 	if mode == 1 then
-		if rtos.poweron_reason() == rtos.POWERON_CHARGER 
-			or rtos.poweron_reason() == rtos.POWERON_ALARM  then
-			rtos.repoweron()
-		end
-	--模式2 充电器开机注册网络，闹钟开机不注册网络
-	elseif  mode == 2 then
 		if rtos.poweron_reason() == rtos.POWERON_CHARGER then
-			rtos.repoweron()
-		end
-	--模式2 闹钟开机注册网络，充电器开机不注册网络
-	elseif  mode == 3 then
-		if rtos.poweron_reason() == rtos.POWERON_ALARM  then
 			rtos.repoweron()
 		end
 	end
