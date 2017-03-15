@@ -1,5 +1,6 @@
-PROJECT = "pm-demo"
+PROJECT = "pm demo"
 VERSION = "1.0.0"
+
 require"sys"
 require"pm"
 require"test"
