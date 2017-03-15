@@ -1,4 +1,4 @@
-PROJECT = "i2c_gpio_switch-demo"
+PROJECT = "i2c_gpio_switch demo"
 VERSION = "1.0.0"
 
 require"sys"

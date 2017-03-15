@@ -1,4 +1,4 @@
-PROJECT = "gpio_single-demo"
+PROJECT = "gpio_single demo"
 VERSION = "1.0.0"
 
 require"sys"
