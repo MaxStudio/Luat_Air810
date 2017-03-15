@@ -1,5 +1,3 @@
-module("sms")
-
 --[[
 模块名称：短信功能
 模块功能：短信发送，接收，读取，删除
@@ -15,6 +13,7 @@ local ril = require "ril"
 local common = require "common"
 local rtos = require "rtos"
 local bit = require"bit"
+module("sms")
 
 --加载常用的全局函数至本地
 local print = base.print
