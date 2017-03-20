@@ -736,7 +736,6 @@ function run()
 		runqmsg()
 		--阻塞读取外部消息
 		msg,v1,v2,v3,v4 = rtos.receive(rtos.INF_TIMEOUT)
-		if msg then watchdog.kick() end
 
 		--电池电量为0%，用户应用脚本中没有定义“低电关机处理程序”，并且没有启动自动关机定时器		
 		if not lprfun and not lpring and type(msg) == "table" and msg.id == rtos.MSG_PMD and msg.level == 0 then
