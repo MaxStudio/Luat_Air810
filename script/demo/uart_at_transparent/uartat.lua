@@ -2,8 +2,12 @@ module(...,package.seeall)
 
 require"pm"
 
---串口ID,2对应uart2
---如果要修改为uart1，把UART_ID赋值为1即可
+--[[
+注意: 本功能模块只能用于简单的验证AT功能，AT手册里面的所有AT命令并不是完全都能支持.
+
+串口ID,2对应uart2,如果要修改为uart1，把UART_ID赋值为1即可.
+]]
+
 local UART_ID = 1
 
 --[[
