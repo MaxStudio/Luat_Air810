@@ -13,7 +13,6 @@ local rtos = require"rtos"
 local uart = require"uart"
 local io = require"io"
 local os = require"os"
-local watchdog = require"watchdog"
 local bit = require"bit"
 local string = require"string"
 module("sys")
@@ -109,6 +108,8 @@ local function timerfnc(utid)
 			--执行定时器回调函数
 			cb()
 		end
+
+		--如果是循环定时器，继续启动此定时器
 		if loop[tid] then 
 		  isn = isn==65535 and 0 or isn+1
 		  tpool[tid].sn = isn
