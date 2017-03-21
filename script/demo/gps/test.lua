@@ -17,19 +17,27 @@ require"agps"
 返回值：无
 ]]
 local function print(...)
-	_G.print("test",...)
+	_G.print("testgps",...)
 end
+
+--[[
+判断是否定位成功  gps.isfix()
+获取经纬度信息      gps.getgpslocation()
+]]
 
 local function test1cb(cause)
 	print("test1cb",cause,gps.isfix())
+	print("test1cb",cause,gps.isfix(),gps.getgpslocation())
 end
 
 local function test2cb(cause)
 	print("test2cb",cause,gps.isfix())
+	print("test2cb",cause,gps.isfix(),gps.getgpslocation())
 end
 
 local function test3cb(cause)
 	print("test3cb",cause,gps.isfix())
+	print("test3cb",cause,gps.isfix(),gps.getgpslocation())
 end
 
 --测试代码开关，取值1,2
