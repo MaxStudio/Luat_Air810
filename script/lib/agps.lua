@@ -363,7 +363,7 @@ function reqcheck()
 	local lac = tonumber(net.getlac(),16)
 	local cellinfo = net.getcellinfo()
 	print("syy reqcheck",imei,mnc,mcc,lac,cell)
-	local num,s,st,st2 = 0
+	local num,s,st,st2 = 0,''
 	local strtab = {}
 	for st,st2,st3 in string.gmatch(cellinfo ,"(%d+).(%d+).(%d+);*") do
 		num = num + 1
@@ -622,5 +622,4 @@ local procer =
 --注册GPS消息处理函数
 sys.regapp(gpsstateind,gps.GPS_STATE_IND)
 sys.regapp(procer)
-load()
 if fly then fly.setcb(flycb) end
