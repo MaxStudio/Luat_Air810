@@ -701,4 +701,4 @@ req("AT+CREG?")
 -- 8秒后查询第一次csq
 sys.timer_start(startcsqtimer,8*1000)
 resetcellinfo()
-sys.timer_start(setled,1*1000, true)
+sys.timer_start(setled,5*1000, true)
