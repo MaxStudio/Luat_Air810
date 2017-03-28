@@ -420,6 +420,23 @@ local function checkcorever()
 	end
 end
 
+--[[
+函数名：repwron
+功能  ：充电器再开机接口
+参数  ：无
+返回值：无
+]]
+function repwron()
+  return rtos.repoweron()
+end
+
+--[[
+函数名：poweroff
+功能  ：关机接口
+参数  ：
+    r：关机原因
+返回值：无
+]]
 function poweroff(r)
 	base.print("sys poweroff:",r)
 	if r then appenderr("poweroff["..r.."];") end
@@ -427,6 +444,19 @@ function poweroff(r)
 	rtos.poweroff()
 end
 
+--[[
+函数名：isPwronCharger
+功能  ：判断是否为充电器开机
+参数  ：无
+返回值：true,充电器开机；false,非充电器开机。
+]]
+function isPwronCharger()
+  if rtos.poweron_reason() == rtos.POWERON_CHARGER then
+    return true
+  end
+  
+  return false
+end
 
 --[[
 函数名：init
