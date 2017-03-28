@@ -395,18 +395,15 @@ end
 返回值：无
 ]]
 local function checkcorever()
-	local realver = getcorever()
+  local regularexp = "[lL][uU][aA][tT]_[vV](%d+)_[aA][iI][rR](%w+)"
+  local realver = getcorever()
 	--如果没有获取到底层软件版本号
 	if not realver or realver=="" then
 		appenderr("checkcorever[no core ver error];")
 		return
 	end
 	
-	local buildver = string.match(realver,"Luat_V(%d+)_Air810")
-	if buildver == nil then
-	 buildver=string.match(realver,"Luat_V(%d+)_AirM2M")
-	 if buildver ~= nil then print("checkcorever AMWatchDebug") end
-	end
+	local buildver = string.match(realver,regularexp)
 
 	--如果底层软件版本号格式错误
 	if not buildver then
@@ -415,7 +412,8 @@ local function checkcorever()
 	end
 	
 	--lib脚本需要的底层软件版本号大于底层软件的实际版本号
-	if tonumber(string.match(CORE_MIN_VER,"Luat_V(%d+)_Air810"))>tonumber(buildver) then
+	local minver = string.match(CORE_MIN_VER,regularexp)
+	if tonumber(minver) > tonumber(buildver) then
 		appenderr("checkcorever[core ver match error]"..realver..","..CORE_MIN_VER..";")
 	end
 end
