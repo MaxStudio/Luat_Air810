@@ -36,7 +36,6 @@ local usercbs = {}
 
 local function print(...)
 	base.print("cc",...)
-	dbg.savetrc("cc",...)
 end
 
 --[[
