@@ -5,6 +5,7 @@ module(...,package.seeall)
 模块最后修改时间：2017.02.23
 ]]
 
+require"audio"
 require"cc"
 
 --默认呼叫的电话号码
