@@ -438,9 +438,12 @@ end
 ]]
 local function sendcnf(result)
 	print("sendcnf",result)
-	local num,data,cb = tsmsnd[1].num,tsmsnd[1].data,tsmsnd[1].cb
-	--从短信发送缓冲表中移除当前短信
-	table.remove(tsmsnd,1)
+  local num,data,cb = nil
+  if base.type(tsmsnd[1]) == "table" then
+    num,data,cb=tsmsnd[1].num,tsmsnd[1].data,tsmsnd[1].cb
+    --从短信发送缓冲表中移除当前短信
+    table.remove(tsmsnd,1)
+  end
 	--如果有发送回调函数，执行回调
 	if cb then cb(result,num,data) end
 	--如果短信发送缓冲表中还有短信，则SMS_SEND_INTERVAL毫秒后，继续发送下条短信
