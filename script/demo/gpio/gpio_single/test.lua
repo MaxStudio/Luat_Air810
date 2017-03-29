@@ -47,17 +47,17 @@ sys.timer_loop_start(pin32set,1000)
 -------------------------PIN32测试结束-------------------------
 
 
--------------------------PIN38测试开始-------------------------
+-------------------------PIN28测试开始-------------------------
 --[[
-函数名：pin38get
-功能  ：读取PIN38引脚的输入电平
+函数名：pin28get
+功能  ：读取PIN28引脚的输入电平
 参数  ：无
 返回值：无
 ]]
-local function pin38get()
-	local v = pins.get(pincfg.PIN38)
-	print("pin38get",v and "low" or "high")
+local function pin28get()
+	local v = pins.get(pincfg.PIN28)
+	print("pin28get",v and "low" or "high")
 end
---启动1秒的循环定时器，读取PIN38引脚的输入电平
-sys.timer_loop_start(pin38get,1000)
--------------------------PIN38测试结束-------------------------
+--启动1秒的循环定时器，读取PIN28引脚的输入电平
+sys.timer_loop_start(pin28get,1000)
+-------------------------PIN28测试结束-------------------------

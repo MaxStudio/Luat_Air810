@@ -7,7 +7,7 @@ require"pins"
 
 --pin值定义如下：
 --pio.P0_XX：表示GPIOXX，例如pio.P0_15，表示GPIO15
---pio.P1_XX：表示GPOXX，例如pio.P1_8，表示GPO8
+--pio.P1_XX：表示GPIOXX，例如pio.P1_8，表示GPIO40
 
 --dir值定义如下（默认值为pio.OUTPUT）：
 --pio.OUTPUT：表示输出，初始化是输出低电平
@@ -24,11 +24,11 @@ require"pins"
 --1
 
 --等价于PIN31 = {pin=pio.P0_10,dir=pio.OUTPUT,valid=1}
---第31个引脚：GPIO10，配置为输出，初始化输出低电平；valid=1，调用set(true,PIN31),则输出高电平，调用set(false,PIN31),则输出低电平
-PIN31 = {pin=pio.P0_10}
+--第31个引脚：GPIO54，配置为输出，初始化输出低电平；valid=1，调用set(true,PIN31),则输出高电平，调用set(false,PIN31),则输出低电平
+PIN31 = {pin=pio.P1_22}
 
---第32个引脚：GPIO11；配置为输出，初始化输出高电平；valid=0，调用set(true,PIN32),则输出低电平，调用set(false,PIN32),则输出高电平
-PIN32 = {pin=pio.P0_11,dir=pio.OUTPUT1,valid=0}
+--第32个引脚：GPIO55；配置为输出，初始化输出高电平；valid=0，调用set(true,PIN32),则输出低电平，调用set(false,PIN32),则输出高电平
+PIN32 = {pin=pio.P1_23,dir=pio.OUTPUT1,valid=0}
 
 --如下三个配置含义和PIN31相似
 --GPIO16
@@ -52,7 +52,7 @@ PIN7 = {pin=pio.P1_3}
 
 --第38个引脚：GPIO21；配置为输入；valid=0
 --调用get(PIN38)时，如果为高电平，则返回false；如果为低电平，则返回true
-PIN38 = {pin=pio.P1_4,dir=pio.INPUT,valid=0}
+PIN38 = {pin=pio.P0_21,dir=pio.INPUT,valid=0}
 
 --如下三个配置含义和PIN31相似
 --GPIO4
@@ -64,5 +64,5 @@ PIN46 = {pin=pio.P0_14}
 --GPIO15
 PIN47 = {pin=pio.P0_15}
 
-pins.reg(PIN31,PIN32,PIN28,PIN27,PIN26,PIN25,PIN7,PIN38,PIN39,PIN40,PIN46,PIN47)
+pins.reg(PIN31,PIN32,PIN28,PIN27,PIN26,PIN25,PIN7)
 
