@@ -4,7 +4,7 @@ module(...,package.seeall)
 
 local ssub,schar,smatch,sbyte,slen = string.sub,string.char,string.match,string.byte,string.len
 --测试时请搭建自己的服务器
-local PROT,ADDR,PORT = "TCP","www.your-server.com",8000
+local PROT,ADDR,PORT = "TCP","120.26.196.195",9999
 local mqttclient
 
 
