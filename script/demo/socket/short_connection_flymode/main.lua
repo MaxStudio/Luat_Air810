@@ -5,9 +5,9 @@ require"sys"
 --关闭脚本中的所有trace打印
 --sys.opntrace(false)
 require"dbg"
-dbg.setup("udp","www.your-server.com",8000)
+dbg.setup("udp","120.26.196.195",9999)
 require"update"
-update.setup("udp","www.your-server.com",8000)
+update.setup("udp","120.26.196.195",9999)
 require"test"
 
 net.setled(true)
