@@ -622,4 +622,5 @@ local procer =
 --注册GPS消息处理函数
 sys.regapp(gpsstateind,gps.GPS_STATE_IND)
 sys.regapp(procer)
+load()
 if fly then fly.setcb(flycb) end

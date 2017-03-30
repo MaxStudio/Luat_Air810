@@ -1074,7 +1074,7 @@ function init(ionum,dir,edge,period,id,baud,databits,parity,stopbits,apgspwronup
 	gps.gnsschange = false
 	gps.filterbgn = nil
 	gps.filtertime = 5
-	gps.timezone = nil
+	gps.timezone = GPS_BEIJING_TIME
 	gps.spdtyp = GPS_KILOMETER_SPD
 	gps.opentags = {}
 	gps.isagpspwronupd = (apgspwronupd == nil) and true or apgspwronupd
@@ -1104,6 +1104,9 @@ function init(ionum,dir,edge,period,id,baud,databits,parity,stopbits,apgspwronup
 	if ionum then
 		pio.pin.setdir(dir,ionum)
 	end
+	
+  sys.regmsg(gpscore.MSG_GPS_DATA_IND,gpsdataind)
+  sys.regmsg(gpscore.MSG_GPS_OPEN_IND,gpsopenind)
 end
 
 --[[
@@ -1193,14 +1196,14 @@ function gpsopenind(success)
 	--gpscore.cmd(gpscore.CMD_COLD_START)
 end
 
-function gpsdateind(ty,lens)
-	print("gpsdateind",ty,lens,isopen())
+function gpsdataind(ty,lens)
+	print("gpsdataind",ty,lens,isopen())
 	if isopen() then
 		local strgps = ""	
 		strgps = gpscore.read(lens)	
-		print("!!! gpsdateind", strgps)
+		print("!!! gpsdataind", strgps)
 		if smatch(strgps,"PMTK010,002*2") then
-			print("syy gpsdateind",strgps)
+			print("syy gpsdataind",strgps)
 			sys.dispatch("AGPS_WRDATE")		
 		end
 		if strgps ~= "" and strgps ~= nil then	
@@ -1377,6 +1380,8 @@ local function gpsstatind(id,evt)
 				end				
 			end			
 		end
+  elseif evt == gps.GPS_CLOSE_EVT then
+    --TO DO ...
 	end
 	return true
 end
