@@ -16,14 +16,30 @@
 
 --定义模块,导入依赖库
 local base = _G
+
+local rtos = require"rtos"
+local sys = require"sys"
 local pmd = require"pmd"
 local pairs = base.pairs
 module("pm")
 
---唤醒标记表
-local tags = {}
+--[[
+tags: 唤醒标记表
+vbatvolt: 电池电压
+]]
+local tags,vbatvolt = {},3800
 --lua应用是否休眠，true休眠，其余没休眠
 local flag = true
+
+--[[
+函数名：print
+功能  ：打印接口，此文件中的所有打印都会加上pm前缀
+参数  ：无
+返回值：无
+]]
+local function print(...)
+  base.print("pm",...)
+end
 
 --[[
 函数名：isleep
@@ -63,7 +79,7 @@ end
 返回值：无
 ]]
 function sleep(tag)
-	
+
 	id = tag or "default"
 
         --唤醒表中此休眠标记位置置0
@@ -73,12 +89,12 @@ function sleep(tag)
 		base.print("pm.sleep:error",tag)
 		tags[id] = 0
 	end
-	
+
 	base.print("pm sleep tag=",tag)
 	for k,v in pairs(tags) do
 		base.print("pm sleep pairs(tags)",k,v)
 	end
-	
+
 	-- 只要存在任何一个模块唤醒,则不睡眠
 	for k,v in pairs(tags) do
 		if v > 0 then
@@ -92,3 +108,37 @@ function sleep(tag)
 	pmd.sleep(1)
 end
 
+function getvbatvolt()
+  return vbatvolt
+end
+
+local function init()
+  vbatvolt = 3800
+  
+  local param = {}
+  param.ccLevel = 4200  --恒流充电点 ，低于4.15恒流，高于则恒压
+  param.cvLevel = 4350  -- 充满电压点
+  param.ovLevel = 4400 -- 充电限制电压
+  param.pvLevel = 4250 --回充点
+  param.poweroffLevel = 3400  --%0电压点
+  param.ccCurrent = 200 --恒流 阶段电流
+  param.fullCurrent = 60  --充满停止电流
+  pmd.init(param)
+end
+
+--[[
+函数名：proc
+功能  ：电源消息的处理函数
+   msg ：电源消息
+返回值：无
+]]
+local function proc(msg)
+  if msg then
+    print("proc",msg.charger,msg.state,msg.level,msg.voltage)
+    vbatvolt = msg.voltage   
+  end
+end
+
+--注册电源管理的处理函数
+sys.regmsg(rtos.MSG_PMD,proc)
+init()

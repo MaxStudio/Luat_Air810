@@ -8,6 +8,7 @@
 local string = require"string"
 local ril = require"ril"
 local sys = require"sys"
+local pm = require"pm"
 local base = _G
 local os = require"os"
 local io = require"io"
@@ -247,6 +248,10 @@ end
 
 function getaudflg()
 	return audflg
+end
+
+function getvbatvolt()
+  return pm.getvbatvolt()
 end
 
 --[[
