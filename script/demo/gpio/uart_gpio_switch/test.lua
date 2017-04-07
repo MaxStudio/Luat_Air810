@@ -11,7 +11,7 @@ local function print(...)
 end
 
 --uartuse：引脚当前是否做为uart功能使用，true表示是，其余的表示不是
-local uartid,uartuse = 2,true
+local uartid,uartuse = 3,true
 local UART_RXD,UART_TXD = pio.P0_0,pio.P0_1
 --[[
 函数名：uartopn

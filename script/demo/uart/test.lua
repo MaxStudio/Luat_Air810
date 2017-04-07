@@ -16,9 +16,9 @@ uart按照帧结构接收外围设备的输入，收到正确的指令后，回复ASCII字符串
 ]]
 
 
---串口ID,0对应uart1
---如果要修改为uart3，把UART_ID赋值为2即可
-local UART_ID = 0
+--串口ID,1对应uart1
+--如果要修改为uart3，把UART_ID赋值为3即可
+local UART_ID = 1
 --帧头类型以及帧尾
 local CMD_SCANNER,CMD_GPIO,CMD_PORT,FRM_TAIL = 1,2,3,string.char(0xC0)
 --串口读到的数据缓冲区
