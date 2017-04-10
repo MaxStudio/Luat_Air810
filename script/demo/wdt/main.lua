@@ -5,6 +5,4 @@ require"sys"
 require"wdt"
 
 sys.init(0,0)
---UART1 as trace's port.
-sys.opntrace(1,1)
 sys.run()
