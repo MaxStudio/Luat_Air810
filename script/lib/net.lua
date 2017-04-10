@@ -36,9 +36,10 @@ local csqqrypriod,cengqrypriod = 60*1000
 
 --cellinfo：当前小区和临近小区信息表
 --flymode：是否处于飞行模式
+--pwrkeymode：是否为电源键开机
 --csqswitch：定时查询信号强度开关
 --cengswitch：定时查询当前和临近小区信息开关
-local cellinfo,flymode,csqswitch,cengswitch = {}
+local cellinfo,flymode,pwrkeymode,csqswitch,cengswitch = {}
 
 --ledstate：网络指示灯状态INIT,FLYMODE,SIMERR,IDLE,CREG,CGATT,SCK
 --INIT：功能关闭状态
@@ -375,6 +376,22 @@ local function flyind(para)
 end
 
 --[[
+函数名：pwrkeyind
+功能  ：内部消息PWRKEY_IND的处理函数
+参数  ：
+    para：参数，表示电源键状态，true表示电源键开机，false表示非电源键开机
+返回值：无
+]]
+local function pwrkeyind(para)
+  --开机键状态发生变化
+  if pwrkeymode~=para then
+    pwrkeymode = para
+    --控制网络指示灯
+    setled(sys.getPwrFlag())
+  end
+end
+
+--[[
 函数名：workmodeind
 功能  ：内部消息SYS_WORKMODE_IND的处理函数
 参数  ：
@@ -582,6 +599,7 @@ end
 返回值：无
 ]]
 function procled()
+  ledflg = sys.getPwrFlag()
 	print("procled",ledflg,ledstate,flymode,usersckconnect,cgatt,state)
 	--如果开启了网络指示灯功能
 	if ledflg then
@@ -606,6 +624,12 @@ function procled()
 			ledstate,ledontime,ledofftime = newstate,newontime,newofftime
 			ledblinkoff()
 		end
+	else
+    sys.timer_stop(ledblinkon)
+    sys.timer_stop(ledblinkoff)
+    pio.pin.setdir(pio.OUTPUT,ledpin)
+    pio.pin.setval(ledvalid==1 and 0 or 1,ledpin)
+    pio.pin.close(ledpin)
 	end
 end
 
@@ -683,6 +707,7 @@ local procer =
 {
 	SIM_IND = simind,
 	FLYMODE_IND = flyind,
+	PWRKEY_IND = pwrkeyind,
 	SYS_WORKMODE_IND = workmodeind,
 	USER_SOCKET_CONNECT = usersckind,
 	NET_GPRS_READY = cgattind,
@@ -692,6 +717,7 @@ sys.regapp(procer)
 --注册+CREG和+CENG通知的处理函数
 ril.regurc("+CREG",neturc)
 ril.regurc("+CENG",neturc)
+ril.regurc("+CPIN",neturc)
 --注册AT+CCSQ命令的应答处理函数
 ril.regrsp("+CSQ",rsp)
 --发送AT命令
@@ -701,4 +727,4 @@ req("AT+CREG?")
 -- 8秒后查询第一次csq
 sys.timer_start(startcsqtimer,8*1000)
 resetcellinfo()
-setled(true)
+setled(sys.getPwrFlag())

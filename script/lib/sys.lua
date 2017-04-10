@@ -26,6 +26,7 @@ local pairs = base.pairs
 local assert = base.assert
 local tonumber = base.tonumber
 local isn = 65535
+local hasPwrKey = false
 
 --lib脚本版本号，只要lib中的任何一个脚本做了修改，都需要更新此版本号
 SCRIPT_LIB_VER = "1.0.0"
@@ -457,6 +458,27 @@ function isPwronCharger()
 end
 
 --[[
+函数名：setPwronCharger
+功能  ：设置开机标识
+参数  ：
+  has 标识
+返回值：无
+]]
+function setPwrFlag(has)
+  hasPwrKey = has
+end
+
+--[[
+函数名：getPwrFlag
+功能  ：获得开机标识
+参数  ：无
+返回值：true,按键开机；false,非按键开机。
+]]
+function getPwrFlag()
+  return hasPwrKey
+end
+
+--[[
 函数名：init
 功能  ：lua应用程序初始化
 参数  ：
@@ -468,12 +490,19 @@ function init(mode,lprfnc)
 	--用户应用脚本中必须定义PROJECT和VERSION两个全局变量，否则会死机重启，如何定义请参考各个demo中的main.lua
 	assert(base.PROJECT and base.PROJECT ~= "" and base.VERSION and base.VERSION ~= "","Undefine PROJECT or VERSION")
 	base.require"keypad"
-	base.require"net"
 	--设置AT命令的虚拟串口
 	uart.setup(uart.ATC,0,0,uart.PAR_NONE,uart.STOP_1)
 	print("init mode :",mode,lprfnc)
 	print("poweron reason:",rtos.poweron_reason(),mode,base.PROJECT,base.VERSION)
-	-- 模式0 充电器开机不注册网络
+
+	-- 模式0 按键开机注册网络
+  if mode == 0 then
+    if rtos.poweron_reason() == rtos.POWERON_KEY then
+      setPwrFlag(true)
+    else
+      setPwrFlag(false)
+    end
+  end
 	
 	-- 模式1 充电器开机注册网络
 	if mode == 1 then
@@ -483,6 +512,7 @@ function init(mode,lprfnc)
 	end
 	
 	--发送MSG_POWERON_REASON消息
+	base.require"net"
 	dispatch("MSG_POWERON_REASON",rtos.poweron_reason())
 	--如果存在脚本运行错误文件，打开文件，打印错误信息
 	local f = io.open("/luaerrinfo.txt","r")

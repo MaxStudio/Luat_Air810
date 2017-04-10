@@ -16,7 +16,9 @@ end
 
 local function repwron()
   print("repwron")
+  sys.setPwrFlag(true)
   sys.repwron()
+  sys.dispatch("PWRKEY_IND",sys.getPwrFlag())
 end
 
 local function keylongpresstimerfun()
