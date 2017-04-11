@@ -1,7 +1,7 @@
 module(...,package.seeall)
 
 local curkey
-local PWROFF_KEY_LONG_PRESS_TIME = 3000
+local PWROFF_KEY_LONG_PRESS_TIME = 1500
 local keymap = {["255255"] = "K_RED"}
 local sta,keyname = "IDLE"
 
