@@ -8,7 +8,7 @@
 module(...,package.seeall)
 
 --模块复位单片机引脚
-local RST_SCMWD_PIN = pio.P1_0
+local RST_SCMWD_PIN = pio.P1_2
 --模块和单片机相互喂狗引脚
 local WATCHDOG_PIN = pio.P0_20
 
@@ -132,7 +132,7 @@ end
 
 --[[
 函数名：open
-功能  ：打开Air200开发板上的硬件看门狗功能，并立即喂狗
+功能  ：打开Air810开发板上的硬件看门狗功能，并立即喂狗
 参数  ：无
 返回值：无
 ]]
@@ -144,7 +144,7 @@ end
 
 --[[
 函数名：test
-功能  ：测试“Air200开发板上的硬件看门狗复位Air200模块”的功能
+功能  ：测试“Air810开发板上的硬件看门狗复位Air810模块”的功能
 参数  ：无
 返回值：无
 ]]
