@@ -41,23 +41,41 @@ local csqqrypriod,cengqrypriod = 60*1000
 --cengswitch：定时查询当前和临近小区信息开关
 local cellinfo,flymode,pwrkeymode,csqswitch,cengswitch = {}
 
---ledstate：网络指示灯状态INIT,FLYMODE,SIMERR,IDLE,CREG,CGATT,SCK
---INIT：功能关闭状态
---FLYMODE：飞行模式
---SIMERR：未检测到SIM卡或者SIM卡锁pin码等异常
---IDLE：未注册GSM网络
---CREG：已注册GSM网络
---CGATT：已附着GPRS数据网络
---SCK：用户socket已连接上后台
---ledontime：指示灯点亮时长(毫秒)
---ledofftime：指示灯熄灭时长(毫秒)
---usersckconnect：用户socket是否连接上后台
+--[[
+ledstate：网络指示灯状态INIT,FLYMODE,SIMERR,IDLE,CREG,CGATT,SCK
+  INIT：功能关闭状态
+  FLYMODE：飞行模式
+  SIMERR：未检测到SIM卡或者SIM卡锁pin码等异常
+  IDLE：未注册GSM网络
+  CREG：已注册GSM网络
+  CGATT：已附着GPRS数据网络
+  SCK：用户socket已连接上后台
+ledontime：指示灯点亮时长(毫秒)
+ledofftime：指示灯熄灭时长(毫秒)
+usersckconnect：用户socket是否连接上后台
+]]
 local ledstate,ledontime,ledofftime,usersckconnect = "INIT",0,0
---ledflg：网络指示灯开关
---ledpin：网络指示灯控制引脚
---ledvalid：引脚输出何种电平会点亮指示灯，1为高，0为低
---ledidleon,ledidleoff,ledcregon,ledcregoff,ledcgatton,ledcgattoff,ledsckon,ledsckoff：IDLE,CREG,CGATT,SCK状态下指示灯的点亮和熄灭时长(毫秒)
-local ledflg,ledpin,ledvalid,ledflymodeon,ledflymodeoff,ledsimerron,ledsimerroff,ledidleon,ledidleoff,ledcregon,ledcregoff,ledcgatton,ledcgattoff,ledsckon,ledsckoff = false,pio.P1_3,1,0,0xFFFF,300,5700,300,3700,300,700,300,1700,100,100
+--[[
+ledflg：网络指示灯开关
+ledpin：网络指示灯控制引脚
+ledvalid：引脚输出何种电平会点亮指示灯，1为高，0为低
+]]
+local ledflg,ledpin,ledvalid=false,pio.P1_3,1
+--[[
+1) 飞行模式：常灭
+ledflymodeon,ledflymodeoff
+2) 未检测到SIM卡：亮0.3秒，灭5.7秒
+ledsimerron,ledsimerroff
+3) 检测到SIM卡，未注册上GSM网络：亮0.3秒，灭3.7秒
+ledidleon,ledidleoff   IDLE状态下指示灯的点亮和熄灭时长(毫秒)
+4) 注册上GSM网络，未附着上GPRS网络：亮0.3秒，灭0.7秒
+ledcregon,ledcregoff   CREG状态下指示灯的点亮和熄灭时长(毫秒)
+5) 附着上GPRS网络，未连接上服务器：亮0.3秒，灭1.7秒
+ledcgatton,ledcgattoff CGATT状态下指示灯的点亮和熄灭时长(毫秒)
+6) 连接上服务器：亮0.1秒，灭0.1秒
+ledsckon,ledsckoff     SCK状态下指示灯的点亮和熄灭时长(毫秒)
+]]
+local ledflymodeon,ledflymodeoff,ledsimerron,ledsimerroff,ledidleon,ledidleoff,ledcregon,ledcregoff,ledcgatton,ledcgattoff,ledsckon,ledsckoff = 0,0xFFFF,300,5700,300,3700,300,700,300,1700,100,100
 
 --[[
 函数名：creg
