@@ -335,7 +335,7 @@ local function writetxt(f,v)
 end
 
 --[[
-函数名：restart
+函数名：appenderr
 功能  ：追加错误信息到LIB_ERR_FILE文件中
 参数  ：
 		s：错误信息，用户自定义，一般是string类型，重启后的trace中会打印出此错误信息
@@ -497,7 +497,7 @@ function init(mode,lprfnc)
 
 	-- 模式0 按键开机注册网络
   if mode == 0 then
-    if rtos.poweron_reason() == rtos.POWERON_KEY then
+    if rtos.poweron_reason() ~= rtos.POWERON_CHARGER then
       setPwrFlag(true)
     else
       setPwrFlag(false)
