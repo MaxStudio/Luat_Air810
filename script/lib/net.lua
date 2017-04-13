@@ -705,13 +705,14 @@ function setled(v,pin,valid,flymodeon,flymodeoff,simerron,simerroff,idleon,idleo
 			ledpin,ledvalid,ledidleon,ledidleoff,ledcregon,ledcregoff = pin or ledpin,valid or ledvalid,idleon or ledidleon,idleoff or ledidleoff,cregon or ledcregon,cregoff or ledcregoff
 			ledcgatton,ledcgattoff,ledsckon,ledsckoff = cgatton or ledcgatton,cgattoff or ledcgattoff,sckon or ledsckon,sckoff or ledsckoff
 			ledflymodeon,ledflymodeoff,ledsimerron,ledsimerroff = flymodeon or ledflymodeon,flymodeoff or ledflymodeoff,simerron or ledsimerron,simerroff or ledsimerroff
-			if not oldledflg then pio.pin.setdir(pio.OUTPUT,ledpin) end
+			if not oldledflg then pio.pin.setdir(pio.OUTPUT,ledpin) pio.pin.setval(1,ledpin) end
 			procled()
 		--¹Ø±Õ
 		else
 			sys.timer_stop(ledblinkon)
 			sys.timer_stop(ledblinkoff)
 			if oldledflg then
+			  pio.pin.setdir(pio.OUTPUT,ledpin)
 				pio.pin.setval(ledvalid==1 and 0 or 1,ledpin)
 				pio.pin.close(ledpin)
 			end
