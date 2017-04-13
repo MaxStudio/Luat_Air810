@@ -569,6 +569,7 @@ end
 local function ledblinkon()
 	--print("ledblinkon",ledstate,ledontime,ledofftime)
 	--引脚输出电平控制指示灯点亮
+	pio.pin.setdir(pio.OUTPUT,ledpin)
 	pio.pin.setval(ledvalid==1 and 1 or 0,ledpin)
 	--常灭
 	if ledontime==0 and ledofftime==0xFFFF then
@@ -594,6 +595,7 @@ end
 function ledblinkoff()
 	--print("ledblinkoff",ledstate,ledontime,ledofftime)
 	--引脚输出电平控制指示灯熄灭
+	pio.pin.setdir(pio.OUTPUT,ledpin)
 	pio.pin.setval(ledvalid==1 and 0 or 1,ledpin)
 	--常灭
 	if ledontime==0 and ledofftime==0xFFFF then
