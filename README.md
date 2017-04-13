@@ -1,29 +1,22 @@
 # Luat
 Luat = Lua +  AT  
-OpenLuat = 合宙AirM2M open source project
+Luat 是合宙（AirM2M）推出的物联网开源架构，依托于通信模块做简易快捷的开发
 
 合宙OpenLuat开源技术支持  
 QQ讨论群：201848376  
-开源社区：www.openluat.com  
-GitHub：https://github.com/airm2m-open/luat  
+开源社区： bbs.openluat.com  
+GitHub： https://github.com/airm2m-open/Luat_Air810  
 百度网盘：https://pan.baidu.com/s/1eSxFHrs  
-开发套件：https://shop436829391.taobao.com/
+开发套件：https://luat.taobao.com/
 
 ## 合宙github开源项目Luat介绍
 
-合宙将十年研发成果悉数公开！GPRS模块软件源码公开！
 
-Air200 模块是合宙（AirM2M）推出的第一款开源模块，基于RDA平台，是一款大量出货的成熟的GPRS模块。  
+底层软件（也叫模块基础软件）,位于/core,用C语言开发完成，支撑Lua的运行。底层软件不开源。
 
-底层软件（也叫基础软件，位于/luat/core）用C语言开发完成，支撑Lua的运行。
+上层软件用Lua脚本语言来开发实现，位于/script,实现各种功能和应用。上层软件向二次用户开源。 
 
-上层软件用Lua脚本语言来开发实现，位于/luat/script。 
+/script/demo里是各个功能的示例程序，/script/lib下是demo以及所有用户代码都需要调用的库文件。
 
+tools目录下是Luat_Air810开源项目开发所用的工具软件。
 
-## 开源用户须知
-
-我司提供的开源代码中，/script/demo里是各个功能的示例程序，/script/product/小蛮GPS定位器 是一个完整的定位器代码。/script/lib下是demo、product以及所有用户代码都需要调用的库文件。
-
-一般用户只需修改我司提供的lua脚本，即可快速完成二次开发，而不会修改core基础软件。这部分用户，请参考：合宙开源项目lua开发须知.md
-
-还有一部分用户，不仅需要修改lua脚本，还要修改core基础软件，这部分用户，请参考：合宙开源项目core+lua开发须知.md
