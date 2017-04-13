@@ -785,7 +785,7 @@ local uartprocs = {}
 ∑µªÿ÷µ£∫Œﬁ
 ]] 
 function reguart(id,fnc)
-	uartprocs[id] = fnc
+	uartprocs[id-1] = fnc
 end
 
 --[[
