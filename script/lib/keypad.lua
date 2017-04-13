@@ -1,7 +1,7 @@
 module(...,package.seeall)
 
 local curkey
-local PWROFF_KEY_LONG_PRESS_TIME = 1500
+local PWROFF_KEY_LONG_PRESS_TIME = 1000
 local keymap = {["255255"] = "K_RED"}
 local sta,keyname = "IDLE"
 
@@ -25,9 +25,13 @@ local function keylongpresstimerfun()
 	print("keylongpresstimerfun curkey",curkey,keyname,sys.isPwronCharger())
   if keyname == "K_RED" then
 		if sys.isPwronCharger() then
-		  repwron()
+		  if sys.getPwrFlag() then
+		    sys.timer_start(pwoff,100)
+		  else
+		    sys.timer_start(repwron,100)
+		  end
 		else
-      sys.timer_start(pwoff,1000)
+      sys.timer_start(pwoff,100)
 		end
 	end
 	sta = "LONG"
