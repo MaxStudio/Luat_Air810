@@ -1,7 +1,7 @@
 module(...,package.seeall)
 
 local curkey
-local PWROFF_KEY_LONG_PRESS_TIME = 1000
+local PWROFF_KEY_LONG_PRESS_TIME = 1500
 local keymap = {["255255"] = "K_RED"}
 local sta,keyname = "IDLE"
 
@@ -22,7 +22,7 @@ local function repwron()
 end
 
 local function keylongpresstimerfun()
-	print("keylongpresstimerfun curkey",curkey,keyname,sys.isPwronCharger())
+	print("keylongpresstimerfun curkey",curkey,keyname,sys.isPwronCharger(),sys.getPwrFlag())
   if keyname == "K_RED" then
 		if sys.isPwronCharger() then
 		  if sys.getPwrFlag() then
@@ -43,7 +43,7 @@ local function stopkeylongpress()
 end
 
 local function startkeylongpress(key)
-	print("startkeylongpress",curkey,key,keyname)
+	print("startkeylongpress",curkey,key,keyname,sys.isPwronCharger(),sys.getPwrFlag())
 	stopkeylongpress()
 	curkey = key
 	
