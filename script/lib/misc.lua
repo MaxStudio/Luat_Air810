@@ -250,8 +250,15 @@ function getaudflg()
 	return audflg
 end
 
+--[[
+函数名：getvbatvolt
+功能  ：获取VBAT的电池电压
+参数  ：无
+返回值：电压，number类型，单位毫伏
+]]
 function getvbatvolt()
-  return pm.getvbatvolt()
+  local v1,v2,v3,v4,v5 = pmd.param_get()
+  return v2
 end
 
 --[[
