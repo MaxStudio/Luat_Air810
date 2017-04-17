@@ -18,9 +18,7 @@ local table = require "table"
 module("cc")
 
 --加载常用的全局函数至本地
-local ipairs,pairs,print,unpack,type = base.ipairs,base.pairs,base.print,base.unpack,base.type
-local dispatch = sys.dispatch
-local req = ril.request
+local ipairs,pairs,print,unpack,type,dispatch,req = base.ipairs,base.pairs,base.print,base.unpack,base.type,sys.dispatch,ril.request
 
 --底层通话模块是否准备就绪，true就绪，false或者nil未就绪
 local ccready = true
