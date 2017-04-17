@@ -13,6 +13,7 @@ local rtos = require"rtos"
 local uart = require"uart"
 local io = require"io"
 local os = require"os"
+local watchdog = require"watchdog"
 local bit = require"bit"
 local string = require"string"
 module("sys")
@@ -494,8 +495,8 @@ function init(mode,lprfnc)
 	uart.setup(uart.ATC,0,0,uart.PAR_NONE,uart.STOP_1)
 	print("init mode :",mode,lprfnc)
 	print("poweron reason:",rtos.poweron_reason(),mode,base.PROJECT,base.VERSION)
+	-- 模式0 充电器和闹钟开机都不注册网络
 
-	-- 模式0 按键开机注册网络
   if mode == 0 then
     if rtos.poweron_reason() ~= rtos.POWERON_CHARGER then
       setPwrFlag(true)
@@ -504,9 +505,20 @@ function init(mode,lprfnc)
     end
   end
 	
-	-- 模式1 充电器开机注册网络
+	-- 模式1 充电器和闹钟开机都注册网络
 	if mode == 1 then
+		if rtos.poweron_reason() == rtos.POWERON_CHARGER 
+			or rtos.poweron_reason() == rtos.POWERON_ALARM  then
+			rtos.repoweron()
+		end
+	--模式2 充电器开机注册网络，闹钟开机不注册网络
+	elseif  mode == 2 then
 		if rtos.poweron_reason() == rtos.POWERON_CHARGER then
+			rtos.repoweron()
+		end
+	--模式2 闹钟开机注册网络，充电器开机不注册网络
+	elseif  mode == 3 then
+		if rtos.poweron_reason() == rtos.POWERON_ALARM  then
 			rtos.repoweron()
 		end
 	end
@@ -806,6 +818,7 @@ function run()
 		runqmsg()
 		--阻塞读取外部消息
 		msg,v1,v2,v3,v4 = rtos.receive(rtos.INF_TIMEOUT)
+		if msg then watchdog.kick() end
 
 		--电池电量为0%，用户应用脚本中没有定义“低电关机处理程序”，并且没有启动自动关机定时器		
 		if not lprfun and not lpring and type(msg) == "table" and msg.id == rtos.MSG_PMD and msg.level == 0 then
