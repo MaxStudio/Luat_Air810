@@ -369,19 +369,28 @@ function settimezone(zone)
 	timezone = zone
 end
 
+function setmode(m)
+	updmode = m
+end
+
+function getmode()
+	return updmode
+end
+
 --[[
 函数名：setup
 功能  ：配置服务器的传输协议、地址和端口
 参数  ：
-        prot ：传输层协议，仅支持TCP和UDP
-		server：服务器地址
-		port：服务器端口
+  prot：传输层协议，仅支持TCP和UDP
+  server：服务器地址
+  port：服务器端口
 返回值：无
 ]]
 function setup(prot,server,port)
 	if prot and server and port then
 		PROTOCOL,SERVER,PORT = prot,server,port
 		-- 只有当定义了项目标识与版本号才支持远程升级
+		print("setup",base.PROJECT,base.VERSION,updmode)
 		if base.PROJECT ~= nil and base.VERSION ~= nil and updmode ~= nil then
 			--连接服务器
 			lid = link.open(nofity,recv,"update")
