@@ -25,9 +25,8 @@ module("pm")
 
 --[[
 tags: 唤醒标记表
-vbatvolt: 电池电压
 ]]
-local tags,vbatvolt = {},3800
+local tags = {}
 --lua应用是否休眠，true休眠，其余没休眠
 local flag = true
 
@@ -108,10 +107,6 @@ function sleep(tag)
 	pmd.sleep(1)
 end
 
-function getvbatvolt()
-  return vbatvolt
-end
-
 local function init()
   vbatvolt = 3800
   
@@ -126,19 +121,4 @@ local function init()
   pmd.init(param)
 end
 
---[[
-函数名：proc
-功能  ：电源消息的处理函数
-   msg ：电源消息
-返回值：无
-]]
-local function proc(msg)
-  if msg then
-    print("proc",msg.charger,msg.state,msg.level,msg.voltage)
-    vbatvolt = msg.voltage   
-  end
-end
-
---注册电源管理的处理函数
-sys.regmsg(rtos.MSG_PMD,proc)
 init()
