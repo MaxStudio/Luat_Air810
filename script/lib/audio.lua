@@ -64,6 +64,7 @@ function beginrecord(id,duration)
 	if not recording then
 		local file = (type(id)=="number" and ("/rcd"..id..".amr") or id)
 		recording = (audio.record(file,duration) == 1)
+		dispatch("AUDIO_RECORD_CNF",recording)
 		--if duration then sys.timer_start(audio.stoprecord,duration*1000,file) end
 	end
 	return true
@@ -211,6 +212,7 @@ ril.regrsp("+AUDREC",audiorsp,0)
 function setspeakervol(vol)
 	audio.setvol(vol)
 	speakervol = vol
+	dispatch("SPEAKER_VOLUME_SET_CNF",true)
 end
 
 --[[
@@ -223,6 +225,7 @@ end
 function setcallvol(vol)
   print("setcallvol",vol)
   audio.setsphvol(vol)
+  dispatch("CALL_VOLUME_SET_CNF",true)
 end
 
 --[[
@@ -242,9 +245,10 @@ end
 		channel：音频通道，跟硬件设计有关，用户程序需要根据硬件配置，Air810模块就固定用audiocore.HANDSET
 返回值：无
 ]]
-local function setaudiochannel(channel)
+function setaudiochannel(channel)
 	audio.setchannel(channel)
 	audiochannel = channel
+	dispatch("AUDIO_CHANNEL_SET_CNF",true)
 end
 
 --[[
@@ -281,6 +285,7 @@ end
 function setmicrophonegain(vol)
 	audio.setmicvol(vol)
 	microphonevol = vol
+	dispatch("MICROPHONE_GAIN_SET_CNF",true)
 end
 
 --[[
@@ -302,13 +307,14 @@ end
 返回值：无
 ]]
 local function audiomsg(msg)
-	if msg.play_end_ind == true then
-		if playname then audio.play(playname) return end
-		 playend()
-	elseif msg.play_error_ind == true then
-		if playname then playname = nil end
-		playerr()
-	end
+  if msg.play_end_ind == true then
+    -- 循环播放时不派发该消息
+    if playname then audio.play(playname) return end
+    playend()
+  elseif msg.play_error_ind == true then
+    if playname then playname = nil end
+    playerr()
+  end
 end
 
 --[[
