@@ -495,8 +495,8 @@ function init(mode,lprfnc)
 	uart.setup(uart.ATC,0,0,uart.PAR_NONE,uart.STOP_1)
 	print("init mode :",mode,lprfnc)
 	print("poweron reason:",rtos.poweron_reason(),mode,base.PROJECT,base.VERSION)
-	-- 模式0 充电器和闹钟开机都不注册网络
 
+	-- 模式0 充电器和闹钟开机都不注册网络
   if mode == 0 then
     if rtos.poweron_reason() ~= rtos.POWERON_CHARGER then
       setPwrFlag(true)
