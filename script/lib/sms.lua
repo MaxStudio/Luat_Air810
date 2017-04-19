@@ -26,6 +26,13 @@ local ready,isn,tlongsms = false,255,{}
 local ssub,slen,sformat,smatch = string.sub,string.len,string.format,string.match
 
 --[[
+  smsreadycb: 短信就绪的用户处理函数
+  newsmscb: 新短信的用户处理函数
+  newlongsmscb: 新长短信的用户处理函数
+]]
+local smsreadycb,newsmscb,newlongsmscb
+
+--[[
 函数名：_send
 功能  ：发送短信
 参数  ：num,号码
@@ -303,6 +310,7 @@ local function smsisready()
 		req("AT+CSCS=\"UCS2\"")
 		req("AT+CPMS=\"SM\"")
 		req('AT+CNMI=2,1')
+		if smsreadycb then smsreadycb() end
 		dispatch("SMS_READY")
 	else
 		sys.timer_start(smsisready,1000)
@@ -418,6 +426,17 @@ local SMS_SEND_INTERVAL = 3000
 local tsmsnd = {}
 
 --[[
+函数名：regsmsreadycb
+功能  ：注册短信就绪的用户处理函数
+参数  ：
+   cb：用户就绪处理函数名
+返回值：无
+]]
+function regsmsreadycb(cb)
+  smsreadycb = cb
+end
+
+--[[
 函数名：sndnxt
 功能  ：发送短信发送缓冲表中的第一条短信
 参数  ：无
@@ -509,8 +528,6 @@ local function newsms(pos)
 	end
 end
 
---新短信的用户处理函数
-local newsmscb
 --[[
 函数名：regnewsmscb
 功能  ：注册新短信的用户处理函数
@@ -544,6 +561,15 @@ local function readcnf(result,num,data,pos,datetime,name)
 	delete(tnewsms[1])
 	--从短信接收位置表中删除此短信的位置
 	table.remove(tnewsms,1)
+    
+    if total and total >1 then
+        sys.dispatch("LONG_SMS_MERGE",num, data,datetime,name,total,idx,isn)  
+        readsms()--读取下一条新短信
+        return
+    end
+    
+    sys.dispatch("SMS_RPT_REQ",num, data,datetime)  
+    
 	if data then
 		--短信内容转换为GB2312字符串格式
 		data = common.ucs2betogb2312(common.hexstobins(data))
@@ -554,11 +580,43 @@ local function readcnf(result,num,data,pos,datetime,name)
 	readsms()
 end
 
+--[[
+函数名：regnewlongsmscb
+功能  ：注册新长短信的用户处理函数
+参数  ：
+        cb：用户处理函数名
+返回值：无
+]]
+function regnewlongsmscb(cb)
+  newlongsmscb = cb
+end
+
+--[[
+函数名：mergercnf
+功能  ：LONG_SMS_MERGR_CNF消息的处理函数，异步返回读取的短信内容
+参数  ：
+    res：短信读取结果，true为成功，false或者nil为失败
+    num：短信号码，ASCII码字符串格式
+    data：短信内容，UCS2大端格式的16进制字符串
+    t：短信日期和时间，ASCII码字符串格式
+    alpha：暂时没用
+返回值：无
+]]
+local function mergercnf(res,num,data,t,alpha)
+    print("sms mergercnf num",num,data,t)
+    sys.dispatch("SMS_RPT_REQ",num,data,t)
+    if data then
+        data = common.ucs2betogb2312(common.hexstobins(data))
+        if newlongsmscb then newlongsmscb(res,num,data,t,alpha) end
+    end
+end
+
 --短信模块的内部消息处理表
 local smsapp =
 {
 	SMS_NEW_MSG_IND = newsms, --收到新短信，sms.lua会抛出SMS_NEW_MSG_IND消息
 	SMS_READ_CNF = readcnf, --调用sms.read读取短信之后，sms.lua会抛出SMS_READ_CNF消息
+	LONG_SMS_MERGR_CNF = mergercnf, --调用sms.read读取短信之后，sms.lua会抛出LONG_SMS_MERGR_CNF消息
 	SMS_SEND_CNF = sendcnf, --调用sms.send发送短信之后，sms.lua会抛出SMS_SEND_CNF消息
 	SMS_READY = sndnxt, --底层短信模块准备就绪
 }
