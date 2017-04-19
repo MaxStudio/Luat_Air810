@@ -1,17 +1,27 @@
 module(...,package.seeall)
 
-local curkey
-local PWROFF_KEY_LONG_PRESS_TIME = 1500
-local keymap = {["255255"] = "K_RED"}
-local sta,keyname = "IDLE"
+--[[
+  DEV_DATACARD: 物联网模块
+  DEV_TRACKER: 定位器模块
+]]
+DEV_DATACARD,DEV_TRACKER = 0,1
+
+local KEY_LONG_PRESS_TIME_PERIOD = 3000
+local keymap,keymode = {["255255"] = "K_RED"},DEV_DATACARD
+local sta,curkey = "IDLE"
+local fivetap,KEY_TAP_MAX = 0,5
 
 local function print(...)
-	_G.print("keypad",...)
+  _G.print("keypad",...)
+end
+
+function init_keypad(mode)
+  keymode = mode
 end
 
 local function pwoff()
-	print("pwoff")
-	sys.poweroff()
+  print("pwoff")
+  sys.poweroff()
 end
 
 local function repwron()
@@ -21,20 +31,30 @@ local function repwron()
   sys.dispatch("PWRKEY_IND",sys.getPwrFlag())
 end
 
-local function keylongpresstimerfun()
-	print("keylongpresstimerfun curkey",curkey,keyname,sys.isPwronCharger(),sys.getPwrFlag())
-  if keyname == "K_RED" then
-		if sys.isPwronCharger() then
-		  if sys.getPwrFlag() then
-		    sys.timer_start(pwoff,100)
-		  else
-		    sys.timer_start(repwron,100)
-		  end
-		else
+local function keymodeprocess(mode)
+  if mode == DEV_TRACKER then
+    sys.dispatch("MMI_KEYPAD_LONGPRESS_IND",curkey)
+  elseif mode == DEV_DATACARD then
+    if sys.isPwronCharger() then
+      if sys.getPwrFlag() then
+        sys.timer_start(pwoff,100)
+      else
+        sys.timer_start(repwron,100)
+      end
+    else
       sys.timer_start(pwoff,100)
-		end
-	end
-	sta = "LONG"
+    end
+  else
+    print("keymode is invalid!",mode)
+  end
+end
+
+local function keylongpresstimerfun()
+  print("keylongpresstimerfun curkey",curkey,sys.isPwronCharger(),sys.getPwrFlag())
+  if curkey == "K_RED" then
+    keymodeprocess(keymode)
+    sta = "LONG"
+  end
 end
 
 local function stopkeylongpress()
@@ -43,31 +63,47 @@ local function stopkeylongpress()
 end
 
 local function startkeylongpress(key)
-	print("startkeylongpress",curkey,key,keyname,sys.isPwronCharger(),sys.getPwrFlag())
+	print("startkeylongpress",curkey,key,sys.isPwronCharger(),sys.getPwrFlag())
 	stopkeylongpress()
 	curkey = key
 	
-	sys.timer_start(keylongpresstimerfun,PWROFF_KEY_LONG_PRESS_TIME)
+	sys.timer_start(keylongpresstimerfun,KEY_LONG_PRESS_TIME_PERIOD)
 end
 
 local function keymsg(msg)
 	print("keypad.keymsg",msg.key_matrix_row,msg.key_matrix_col)
 	local key = keymap[msg.key_matrix_row..msg.key_matrix_col]
-	print("keymsg key",key,msg.pressed,keyname)
+	print("keymsg key",key,msg.pressed)
 	if key then
 		if msg.pressed then
 			sta = "PRESSED"
-			if not keyname then
-				keyname = key
-			end
 			startkeylongpress(key)			
 		else
 			stopkeylongpress()
+			if sta == "PRESSED" then
+				sys.dispatch("MMI_KEYPAD_IND",key)
+			end
 			sta = "IDLE"
-			keyname = nil
 		end
 	end
 end
 
+local function resetfivetap()
+	fivetap = 0
+end
+
+local function keyind()
+	fivetap = fivetap+1
+	if fivetap >= KEY_TAP_MAX then
+		resetfivetap()
+		sys.timer_stop(resetfivetap)
+		sys.dispatch("MMI_KEYPAD_FIVETAP_IND")
+	else
+		sys.timer_start(resetfivetap,1000)
+	end
+	return true
+end
+
 sys.regmsg(rtos.MSG_KEYPAD,keymsg)
+sys.regapp(keyind,"MMI_KEYPAD_IND")
 rtos.init_module(rtos.MOD_KEYPAD,0,0,0)
