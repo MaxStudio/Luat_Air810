@@ -135,6 +135,24 @@ function setdir(dir,p)
 end
 
 --[[
+函数名：close
+功能  ：设置引脚的方向
+参数  ：  
+    p： 引脚的名字
+返回值：无
+]]
+function close(p)
+  if p and not p.ptype or p.ptype == "GPIO" then
+    if not p.inited then
+      p.inited = true
+    end
+    if p.pin then
+      pio.pin.close(p.pin)
+    end
+  end
+end
+
+--[[
 函数名：intmsg
 功能  ：中断型引脚的中断处理程序，会抛出一个逻辑中断消息给其他模块使用
 参数  ：  
