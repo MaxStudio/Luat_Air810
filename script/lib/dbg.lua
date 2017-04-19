@@ -13,17 +13,17 @@ module(...,package.seeall)
 --lid：socket id
 --linksta：连接状态，true为连接成功，false为失败
 --prot,server,port：传输层协议(TCP或者UDP)，服务器地址和端口
-local FREQ,lid,linksta,prot,server,port = 1800000,0,false,"UDP","ota.airm2m.com",9072
+local FREQ,lid,linksta,prot,server,port = 1800000,0,false
 --DBG_FILE：错误文件路径
 --resinf,inf：DBG_FILE中的错误信息和sys.lua中LIB_ERR_FILE中的错误信息
 --luaerr："/luaerrinfo.txt"中的错误信息
-local DBG_FILE,resinf,inf,luaerr,d1,d2 = "/dbg.txt",""
+local DBG_FILE,resinf,inf,luaerr = "/dbg.txt",""
 --LIB_ERR_FILE：存储脚本错误的文件路径
 --liberr: "/lib_err.txt"中的错误信息
 local LIB_ERR_FILE,liberr = "/lib_err.txt",""
 
 --[[
-函数名：writetxt
+函数名：readtxt
 功能  ：读取文本文件中的全部内容
 参数  ：
 		f：文件路径
@@ -222,7 +222,7 @@ local function init()
     if linksta then
       snd()
     else
-      lid = link.open(notify,recv)
+      lid = link.open(notify,recv,"dbg")
       link.connect(lid,prot,server,port)
     end
     sys.dispatch("DBG_BEGIN_IND")
