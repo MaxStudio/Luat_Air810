@@ -1226,7 +1226,7 @@ end
 2、“GPS应用”标记(必选)
 3、GPS开启最大时长[可选]
 4、回调函数[可选]
-例如gps.open(gpsapp.TIMERORSUC,{cause="TEST",val=120,cb=testgpscb})
+例如gps.open(gps.TIMERORSUC,{cause="TEST",val=120,cb=testgpscb})
 gps.TIMERORSUC为GPS工作模式，"TEST"为“GPS应用”标记，120秒为GPS开启最大时长，testgpscb为回调函数
 ]]
 
@@ -1251,12 +1251,12 @@ local tlist = {}
 
 --[[
 函数名：print
-功能  ：打印接口，此文件中的所有打印都会加上gpsapp前缀
+功能  ：打印接口，此文件中的所有打印都会加上gps前缀
 参数  ：无
 返回值：无
 ]]
 local function print(...)
-	base.print("gpsapp",...)
+	base.print("gps",...)
 end
 
 --[[
@@ -1412,7 +1412,7 @@ end
 返回值：无
 ]]
 function close(mode,para)
-	assert((para and type(para) == "table" and para.cause and type(para.cause) == "string"),"gpsapp.close para invalid")
+	assert((para and type(para) == "table" and para.cause and type(para.cause) == "string"),"gps.close para invalid")
 	print("ctl close",mode,para.cause,para.val,para.cb)
 	--删除此“GPS应用”
 	delitem(mode,para)
@@ -1423,7 +1423,7 @@ function close(mode,para)
 		end		
 	end
 	--如果没有一个“GPS应用”有效，则关闭GPS
-	if not valid then closegps("gpsapp") end
+	if not valid then closegps("gps") end
 end
 
 --[[
@@ -1438,7 +1438,7 @@ end
 返回值：无
 ]]
 function open(mode,para)
-	assert((para and type(para) == "table" and para.cause and type(para.cause) == "string"),"gpsapp.open para invalid")
+	assert((para and type(para) == "table" and para.cause and type(para.cause) == "string"),"gps.open para invalid")
 	print("ctl open",mode,para.cause,para.val,para.cb)
 	--如果GPS定位成功
 	if isfix() then
@@ -1450,7 +1450,7 @@ function open(mode,para)
 	end
 	additem(mode,para)
 	--真正去打开GPS
-	opengps("gpsapp")
+	opengps("gps")
 	--启动1秒的定时器
 	if isexisttimeritem() and not sys.timer_is_active(timerfunc) then
 		sys.timer_start(timerfunc,1000)
@@ -1469,7 +1469,7 @@ end
 返回值：激活返回true，否则返回nil
 ]]
 function isactive(mode,para)
-	assert((para and type(para) == "table" and para.cause and type(para.cause) == "string"),"gpsapp.isactive para invalid")
+	assert((para and type(para) == "table" and para.cause and type(para.cause) == "string"),"gps.isactive para invalid")
 	local i
 	for i=1,#tlist do
 		if tlist[i].flag and tlist[i].mode == mode and tlist[i].para.cause == para.cause then
