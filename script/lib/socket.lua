@@ -99,7 +99,8 @@ local function sndack(idx,suc,item)
 	end
 end
 
-local function sckrsp(id,evt,val)--对此连接的状态通知和处理的程序
+--对此连接的状态通知和处理的程序
+local function sckrsp(id,evt,val)
 	local idx = getidxbyid(id)
 	if not idx then print("sckrsp err idx",id,evt,val) return end
 	print("sckrsp",id,evt,val)
@@ -159,7 +160,8 @@ local function sckrsp(id,evt,val)--对此连接的状态通知和处理的程序
 	end
 end
 
-local function sckrcv(id,data)--对此连接收到数据进行处理的程序
+--对此连接收到数据进行处理的程序
+local function sckrcv(id,data)
 	scks[getidxbyid(id)].rcv(getidxbyid(id),data)
 end
 
