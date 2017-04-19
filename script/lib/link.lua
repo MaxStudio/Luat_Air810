@@ -492,6 +492,7 @@ function closecnf(id,result)
 		stopconnectingtimer(id)
 		-- 连接注销,清除维护的连接信息,清除urc关注
 	elseif linklist[id].state == "CLOSING" then
+		-- 连接注销,清除维护的连接信息,清除urc关注
 		local tlink = linklist[id]
 		usersckntfy(id,false)
 		linklist[id] = nil
