@@ -28,6 +28,7 @@ local assert = base.assert
 local tonumber = base.tonumber
 local isn = 65535
 local hasPwrKey = false
+local opntrc = {}
 
 --lib脚本版本号，只要lib中的任何一个脚本做了修改，都需要更新此版本号
 SCRIPT_LIB_VER = "1.0.0"
@@ -584,7 +585,7 @@ end
           仅支持1200,2400,4800,9600,14400,19200,28800,38400,57600,76800,115200,230400,460800,576000,921600,1152000,4000000
 返回值：无
 ]]
-function opntrace(v,uartid,baudrate)
+local function opnsettrace(v,uartid,baudrate)
   if uartid then
     if v then
       uart.setup(uartid,baudrate or 115200,8,uart.PAR_NONE,uart.STOP_1)
@@ -593,6 +594,28 @@ function opntrace(v,uartid,baudrate)
     end
   end
   rtos.set_trace(v and 1 or 0,uartid)
+end
+
+function opntrace(v,uartid,baudrate)
+  if opntrc.id == nil then
+    opntrc.sta = v
+    opntrc.id = uartid
+    opntrc.rate = baudrate
+    opnsettrace(v,uartid,baudrate)
+  else
+    if v == opntrc.sta then
+      if uartid == opntrc.id and baudrate == opntrc.rate then
+        print("opntrace invalid!")
+      else
+        opntrc.sta = v
+        opntrc.id = uartid
+        opntrc.rate = baudrate
+        opnsettrace(v,uartid,baudrate)
+      end
+    else
+      print("opntrace invalid!")
+    end
+  end
 end
 
 --应用消息分发,消息通知
