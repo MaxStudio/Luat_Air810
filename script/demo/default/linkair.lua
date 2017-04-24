@@ -314,8 +314,6 @@ local procer =
 	IMEI_READY = imeirdy,
 }
 
---UART1 as trace's port.
-sys.opntrace(1,1)
 --注册消息的处理函数
 sys.regapp(procer)
 --设置30秒钟查询一个基站信息
