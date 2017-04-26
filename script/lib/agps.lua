@@ -312,40 +312,40 @@ local function upbegin(data)
 end
 
 function writeapgs(str)
-	print("syy writeapgs",str,slen(str))
+	print("writeapgs",str,slen(str))
 	local A,tmp,s1,s2 = 65,0
 	for i = 2,slen(str)-1 do
 		tmp = bit.bxor(tmp,sbyte(str,i))
-	end	
+	end
 	if bit.rshift(tmp,4) > 9 then
 		s1 = schar(bit.rshift(tmp,4) - 10 + A)
-	else 
-		s1 = bit.rshift(tmp,4) + '0'	
+	else
+		s1 = bit.rshift(tmp,4) + '0'
 	end
-		
+
 	if bit.band(tmp,0x0f) > 9 then
 		s2 = schar(bit.band(tmp,0x0f) - 10 + A)
-	else 
-		s2 = bit.band(tmp,0x0f) + '0'	
+	else
+		s2 = bit.band(tmp,0x0f) + '0'
 	end
 	str = str..s1..s2..'\13'..'\10'..'\0'
-	print("syy writeapgs str",str,slen(str))
+	print("writeapgs str",str,slen(str))
 	gpscore.write(str)
 end
 
 local function agpswr()
-	print("syy agpswr")
+	print("agpswr")
 	local clkstr,s,i = os.date("*t")
 	local clk = common.transftimezone(clkstr.year,clkstr.month,clkstr.day,clkstr.hour,clkstr.min,clkstr.sec,8,0)
-	s = string.format("%0d,%02d,%02d,%02d,%02d,%02d",clk.year,clk.month,clk.day,clk.hour,clk.min,clk.sec)		
+	s = string.format("%0d,%02d,%02d,%02d,%02d,%02d",clk.year,clk.month,clk.day,clk.hour,clk.min,clk.sec)
 	local str = getagpstr()
-	if str then 
-		str = str..s..'*'		
+	if str then
+		str = str..s..'*'
 		writeapgs(str)
 		gps.closegps("AGPS")
 		sys.dispatch("AGPS_WRDATE_SUC")
 	end
-	return true	
+	return true
 end
 
 --[[
@@ -362,14 +362,14 @@ function reqcheck()
 	local cell = tonumber(net.getci(),16)
 	local lac = tonumber(net.getlac(),16)
 	local cellinfo = net.getcellinfo()
-	print("syy reqcheck",imei,mnc,mcc,lac,cell)
+	print("reqcheck",imei,mnc,mcc,lac,cell)
 	local num,s,st,st2 = 0,''
 	local strtab = {}
 	for st,st2,st3 in string.gmatch(cellinfo ,"(%d+).(%d+).(%d+);*") do
 		num = num + 1
 		table.insert(strtab,{lac = st,cell=st2,rs=st3})
 	end
-	print("syy s,num",s,num)	
+	print("reqcheck s,num",s,num)
 	table.sort(strtab,function(a,b) return tonumber(a.rs)>tonumber(b.rs) end )
 	for i=1, #strtab do
 		if s then
@@ -381,10 +381,10 @@ function reqcheck()
 	for i = num,5 do
 		s= s..',,'
 	end
-	print("syy s",s)
-	
+	print("reqcheck s",s)
+
 	local str = imei..",3,"..lac..","..cell..","..s..","..mnc..","..mcc
-	print("syy str",str,num)
+	print("reqcheck str",str,num)
 	if num >= 3 then
 		send(lid,str)
 	else
@@ -431,16 +431,16 @@ end
 local agpsstr
 
 local function setagpstr(str)
-	agpsstr = str	
+	agpsstr = str
 end
 
 function getagpstr(str)
-	return agpsstr	
+	return agpsstr
 end
 
 function setsucstr()
 	local lng,lat = smatch(gps.getgpslocation(),"[EW]*,(%d+%.%d+),[NS]*,(%d+%.%d+)")
-	print("syy setsucstr,lng",lng,lat)
+	print("setsucstr,lng",lng,lat)
 	if lng and lat then
 		local str = '$PMTK741,'..lat..','..lng..',0,'
 		setagpstr(str)
@@ -459,18 +459,17 @@ local function rcv(id,data)
 	base.collectgarbage()
 	--停止重试定时器
 	sys.timer_stop(retry)
-	print("syy rcv",data)
+	print("rcv",data)
 	--如果定位成功或者不支持GPS模块
 	if smatch(data,"^3,") then
 		print(data)
 		local str1,str2,str3,str4 = smatch(data,"%d+,(%d+%.%d+),(%d+%.%d+),(%d+%/%d+%/%d+) (%d+%:%d+%:%d+)")
-		--local str5 = sgsub(str3, "/",",")
-		--local str6 = sgsub(str4, ":",",")
+		if not str1 or not str2 then print("rcv invalid data") return end
 		local str = '$PMTK741,'..str2..','..str1..',0,'
-		print("syy rcv str",str)
+		print("rcv str",str)
 		setagpstr(str)
 		if gps.isopen() then
-			agpswr()	
+			agpswr()
 		elseif not agpsop then
 			gps.opengps("AGPS")
 			agpsop = true
@@ -560,7 +559,7 @@ function connect()
 		--用户控制模式
 		else
 			dispatch("AGPS_EVT","BEGIN_IND",connectcb)
-		end		
+		end
 	end
 end
 
