@@ -167,7 +167,7 @@ local function intmsg(msg)
 	for _,v in ipairs(allpins) do
 		if v.dir == pio.INT and msg.int_resnum == v.pin then
 			v.val = v.valid == status
-			sys.dispatch(string.format("PIN_%s_IND",v.name),v.val)
+			if v.intcb then v.intcb(v.val) end
 			return
 		end
 	end
