@@ -44,10 +44,10 @@ end
 --第25个引脚：GPIO36；配置为中断；valid=1
 --intcb表示中断管脚的中断处理函数，产生中断时，如果为高电平，则回调intcb(true)；如果为低电平，则回调intcb(false)
 --调用get(PIN25)时，如果为高电平，则返回true；如果为低电平，则返回false
-PIN25 = {name="PIN25",pin=pio.P1_4,dir=pio.INT,valid=1,intcb=pin5cb}
+PIN25 = {name="PIN25",pin=pio.P1_4,dir=pio.INT,valid=1,intcb=pin25cb}
 
 --和PIN31相似
---GPIO35
+--GPIO35,可配置为中断
 PIN7 = {pin=pio.P1_3}
 
 --第38个引脚：GPIO21；配置为输入；valid=0
@@ -55,11 +55,11 @@ PIN7 = {pin=pio.P1_3}
 PIN38 = {pin=pio.P0_21,dir=pio.INPUT,valid=0}
 
 --如下三个配置含义和PIN31相似
---GPIO4
+--GPIO4,可配置为中断
 PIN39 = {pin=pio.P0_4}
---GPIO2
+--GPIO2,可配置为中断
 PIN40 = {pin=pio.P0_2}
---GPIO14
+--GPIO14,可配置为中断
 PIN46 = {pin=pio.P0_14}
 --GPIO15
 PIN47 = {pin=pio.P0_15}
