@@ -6,7 +6,7 @@ module(...,package.seeall)
 ]]
 DEV_DATACARD,DEV_TRACKER = 0,1
 
-local KEY_LONG_PRESS_TIME_PERIOD = 3000
+local KEY_LONG_PRESS_TIME_PERIOD = 1500
 local keymap,keymode = {["255255"] = "K_RED"},DEV_DATACARD
 local sta,curkey = "IDLE"
 local fivetap,KEY_TAP_MAX = 0,5
@@ -78,7 +78,6 @@ local function keymsg(msg)
 		if msg.pressed then
 			sta = "PRESSED"
 			startkeylongpress(key)
-			sys.dispatch("PWRKEY_IND",sys.getPwrFlag(),true)
 		else
 			stopkeylongpress()
 			if sta == "PRESSED" then

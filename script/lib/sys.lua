@@ -13,6 +13,7 @@ local rtos = require"rtos"
 local uart = require"uart"
 local io = require"io"
 local os = require"os"
+local pio = require"pio"
 local watchdog = require"watchdog"
 local bit = require"bit"
 local string = require"string"
@@ -918,3 +919,8 @@ function removegpsdat()
 end
 
 --timer_start(removegpsdat,3600*1000)
+
+if rtos.poweron_reason() == 0 then
+  pio.pin.setdir(pio.OUTPUT,pio.P1_3)
+  pio.pin.setval(1,pio.P1_3)
+end

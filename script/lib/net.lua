@@ -419,12 +419,12 @@ end
 返回值：无
 ]]
 local function pwrkeyind(para,pressed)
-  if pressed then ledblinkflush(true) return end
   --开机键状态发生变化
   if pwrkeymode~=para then
     pwrkeymode = para
     --控制网络指示灯
     setled(sys.getPwrFlag())
+    ledblinkflush(true)
   end
 end
 
