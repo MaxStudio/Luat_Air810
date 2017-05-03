@@ -78,6 +78,24 @@ ledsckon,ledsckoff     SCK状态下指示灯的点亮和熄灭时长(毫秒)
 local ledflymodeon,ledflymodeoff,ledsimerron,ledsimerroff,ledidleon,ledidleoff,ledcregon,ledcregoff,ledcgatton,ledcgattoff,ledsckon,ledsckoff = 0,0xFFFF,300,5700,300,3700,300,700,300,1700,100,100
 
 --[[
+函数名：ledblinkflush
+功能  ：控制网络指示灯开/关
+参数  ：
+  on true指示灯点亮，false指示灯熄灭
+返回值：无
+]]
+local function ledblinkflush(on)
+  pio.pin.setdir(pio.OUTPUT,ledpin)
+  if on then
+    --引脚输出电平控制指示灯点亮
+    pio.pin.setval(ledvalid==1 and 1 or 0,ledpin)
+  else
+    --引脚输出电平控制指示灯熄灭
+    pio.pin.setval(ledvalid==1 and 0 or 1,ledpin)
+  end
+end
+
+--[[
 函数名：creg
 功能  ：解析CREG信息
 参数  ：
@@ -400,7 +418,8 @@ end
     para：参数，表示电源键状态，true表示电源键开机，false表示非电源键开机
 返回值：无
 ]]
-local function pwrkeyind(para)
+local function pwrkeyind(para,pressed)
+  if pressed then ledblinkflush(true) return end
   --开机键状态发生变化
   if pwrkeymode~=para then
     pwrkeymode = para
@@ -568,9 +587,6 @@ end
 ]]
 local function ledblinkon()
 	--print("ledblinkon",ledstate,ledontime,ledofftime)
-	--引脚输出电平控制指示灯点亮
-	pio.pin.setdir(pio.OUTPUT,ledpin)
-	pio.pin.setval(ledvalid==1 and 1 or 0,ledpin)
 	--常灭
 	if ledontime==0 and ledofftime==0xFFFF then
 		ledblinkoff()
@@ -581,6 +597,7 @@ local function ledblinkon()
 		sys.timer_stop(ledblinkoff)
 	--闪烁
 	else
+	  ledblinkflush(true)
 		--启动点亮时长定时器，定时到了之后，熄灭指示灯
 		sys.timer_start(ledblinkoff,ledontime)
 	end	
@@ -594,9 +611,6 @@ end
 ]]
 function ledblinkoff()
 	--print("ledblinkoff",ledstate,ledontime,ledofftime)
-	--引脚输出电平控制指示灯熄灭
-	pio.pin.setdir(pio.OUTPUT,ledpin)
-	pio.pin.setval(ledvalid==1 and 0 or 1,ledpin)
 	--常灭
 	if ledontime==0 and ledofftime==0xFFFF then
 		--关闭点亮时长定时器和熄灭时长定时器
@@ -607,6 +621,7 @@ function ledblinkoff()
 		ledblinkon()
 	--闪烁
 	else
+	  ledblinkflush(false)
 		--启动熄灭时长定时器，定时到了之后，点亮指示灯
 		sys.timer_start(ledblinkon,ledofftime)
 	end	

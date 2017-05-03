@@ -77,7 +77,8 @@ local function keymsg(msg)
 	if key then
 		if msg.pressed then
 			sta = "PRESSED"
-			startkeylongpress(key)			
+			startkeylongpress(key)
+			sys.dispatch("PWRKEY_IND",sys.getPwrFlag(),true)
 		else
 			stopkeylongpress()
 			if sta == "PRESSED" then
