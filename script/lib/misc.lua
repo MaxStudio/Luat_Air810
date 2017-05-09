@@ -169,9 +169,11 @@ end
 ∑µªÿ÷µ£∫Œﬁ
 ]]
 function startclktimer()
-	sys.dispatch("CLOCK_IND")
-	print('CLOCK_IND',os.date("*t").sec)
-	sys.timer_start(startclktimer,(60-os.date("*t").sec)*1000)
+  if sys.getworkmode() == sys.FULL_MODE then
+    sys.dispatch("CLOCK_IND")
+    print('CLOCK_IND',os.date("*t").sec)
+    sys.timer_start(startclktimer,(60-os.date("*t").sec)*1000)
+  end
 end
 
 function chingeclktimer()
