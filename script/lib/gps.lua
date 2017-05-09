@@ -105,9 +105,11 @@ local function abs(v1,v2)
 	return ((v1>v2) and (v1-v2) or (v2-v1))
 end
 
+--[[
 local function emptyque()
 	gps.dataN,gps.A,gps.L = 0,{},{}
 end
+]]
 
 local function getmilli(v,vr)
 	local L,ov1,v1,v2,R,T,OT = slen(v)
@@ -211,13 +213,15 @@ local function getvg(A,L)
 	return A1,A2,L1,L2
 end
 
+--[[
 local function getd(I)
 	return abs(gps.A[I],gps.A[I-1]) + abs(gps.L[I],gps.L[I-1])
 end
+]]
 
 local function push(A,L)
 	--print("push", A, L)
-	table.insert(gps.A, A)
+	--[[table.insert(gps.A, A)
 	table.insert(gps.L, L)
 	gps.dataN = gps.dataN + 1
 	if gps.dataN > gps.QueL then
@@ -238,17 +242,17 @@ local function push(A,L)
 			gps.L[I] = gps.L[I+1]
 		end
 		return getvg(gps.A[I], gps.L[I])
-	end
+	end]]
 	return getvg(A,L)
 end
 
 local function filter(LA,RA,LL,RL)
 	--print("gps data", LA,RA,LL,RL,gps.dataN,gps.cgen)
 
-	if (c.gps - gps.cgen) > 10 then
+	--[[if (c.gps - gps.cgen) > 10 then
 		print("longtime no gps",c.gps,gps.cgen)
 		emptyque()
-	end
+	end]]
 
 	if slen(LA) ~= 4 or (slen(LL) ~= 5 and slen(LL) ~= 4) then
 		print("err LA or LL", LA, LL)
@@ -1085,7 +1089,7 @@ function init(ionum,dir,edge,period,id,baud,databits,parity,stopbits,apgspwronup
 	c.GpsPrtMod = 180
 	c.gpsprint = 0
 
-	emptyque()
+	--emptyque()
 	gps.cgen = 0
 	gps.QueL = 7
 	gps.errL = 100
