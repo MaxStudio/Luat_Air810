@@ -62,17 +62,18 @@ ledvalid：引脚输出何种电平会点亮指示灯，1为高，0为低
 ]]
 local ledflg,ledpin,ledvalid=false,pio.P1_3,1
 --[[
-1) 飞行模式：常灭
+1) 充电器开机，从未按过电源键：常灭
+2) 飞行模式：常灭
 ledflymodeon,ledflymodeoff
-2) 未检测到SIM卡：亮0.3秒，灭5.7秒
+3) 未检测到SIM卡：亮0.3秒，灭5.7秒
 ledsimerron,ledsimerroff
-3) 检测到SIM卡，未注册上GSM网络：亮0.3秒，灭3.7秒
+4) 检测到SIM卡，未注册上GSM网络：亮0.3秒，灭3.7秒
 ledidleon,ledidleoff   IDLE状态下指示灯的点亮和熄灭时长(毫秒)
-4) 注册上GSM网络，未附着上GPRS网络：亮0.3秒，灭0.7秒
+5) 注册上GSM网络，未附着上GPRS网络：亮0.3秒，灭0.7秒
 ledcregon,ledcregoff   CREG状态下指示灯的点亮和熄灭时长(毫秒)
-5) 附着上GPRS网络，未连接上服务器：亮0.3秒，灭1.7秒
+6) 附着上GPRS网络，未连接上服务器：亮0.3秒，灭1.7秒
 ledcgatton,ledcgattoff CGATT状态下指示灯的点亮和熄灭时长(毫秒)
-6) 连接上服务器：亮0.1秒，灭0.1秒
+7) 连接上服务器：亮0.1秒，灭0.1秒
 ledsckon,ledsckoff     SCK状态下指示灯的点亮和熄灭时长(毫秒)
 ]]
 local ledflymodeon,ledflymodeoff,ledsimerron,ledsimerroff,ledidleon,ledidleoff,ledcregon,ledcregoff,ledcgatton,ledcgattoff,ledsckon,ledsckoff = 0,0xFFFF,300,5700,300,3700,300,700,300,1700,100,100
@@ -192,7 +193,7 @@ local function ceng(data)
 		id = string.match(data,"%+CENG:(%d)")
 		id = tonumber(id)
 		mcc,mnc,lac,ci,rssi=string.match(data, "%+CENG:%d,(%w+),(%d+),(%d+),(%d+),%d+,(%d+)")
-		
+
 		--解析正确
 		if rssi and ci and lac and mcc and mnc then
 			--如果是第一条，清除信息表
@@ -600,7 +601,7 @@ local function ledblinkon()
 	  ledblinkflush(true)
 		--启动点亮时长定时器，定时到了之后，熄灭指示灯
 		sys.timer_start(ledblinkoff,ledontime)
-	end	
+	end
 end
 
 --[[
@@ -624,7 +625,7 @@ function ledblinkoff()
 	  ledblinkflush(false)
 		--启动熄灭时长定时器，定时到了之后，点亮指示灯
 		sys.timer_start(ledblinkon,ledofftime)
-	end	
+	end
 end
 
 --[[
@@ -734,7 +735,7 @@ function setled(v,pin,valid,flymodeon,flymodeoff,simerron,simerroff,idleon,idleo
 				pio.pin.close(ledpin)
 			end
 			ledstate = "INIT"
-		end		
+		end
 	end
 end
 
