@@ -25,7 +25,7 @@ local function init()
 	end
 	
 	local req_id=i2c.read(i2cid,0xf,1)
-	print("id: ", string.format("%02X", string.byte(req_id)))
+	print("init id: ", string.format("%02X", string.byte(req_id)))
 	
 	local cmd,i = {0x1B,0x00,   0x6A,0x01,  0x1E,0x20, 0x21,0x04,  0x1B,0x00,  0x1B,0x9A,  0x1B,0x9A}
 	for i=1,#cmd,2 do
