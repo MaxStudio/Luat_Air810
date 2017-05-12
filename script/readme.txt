@@ -37,3 +37,5 @@ uart：串口
 
 wdt：测试开发板上的硬件看门狗
 
+xiaoman_gps_tracker\whole_test：针对小蛮GPS定位器硬件写的一个完整的demo项目，支持硬件的各种功能，只能用于小蛮GPS定位器硬件，不能用于开发板，也不能配合时间线APP使用，注意修改sck.lua中的后台地址
+
