@@ -1381,9 +1381,10 @@ local function gpsstatind(id,evt)
 					if tlist[i].mode == DEFAULT then
 						if isexisttimeritem() then sys.timer_start(timerfunc,1000) end
 					end
-				end				
-			end			
+				end
+			end
 		end
+		sys.dispatch("GPS_FIX_SUC")
   elseif evt == gps.GPS_CLOSE_EVT then
     --TO DO ...
 	end
