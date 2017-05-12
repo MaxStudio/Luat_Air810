@@ -31,7 +31,7 @@ local function connected()
 	print("connected")
 	--设置mic增益
 	audio.setmicrophonegain(7)
-	--10秒中之后主动结束通话
+	--10秒钟之后主动结束通话
 	sys.timer_start(cc.hangup,10000,"AUTO_DISCONNECT")
 end
 
