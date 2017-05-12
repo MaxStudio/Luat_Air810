@@ -79,6 +79,16 @@ ledsckon,ledsckoff     SCK状态下指示灯的点亮和熄灭时长(毫秒)
 local ledflymodeon,ledflymodeoff,ledsimerron,ledsimerroff,ledidleon,ledidleoff,ledcregon,ledcregoff,ledcgatton,ledcgattoff,ledsckon,ledsckoff = 0,0xFFFF,300,5700,300,3700,300,700,300,1700,100,100
 
 --[[
+函数名：print
+功能  ：打印接口，此文件中的所有打印都会加上test前缀
+参数  ：无
+返回值：无
+]]
+local function print(...)
+  base.print("net",...)
+end
+
+--[[
 函数名：ledblinkflush
 功能  ：控制网络指示灯开/关
 参数  ：
