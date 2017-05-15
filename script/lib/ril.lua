@@ -243,6 +243,16 @@ local function urc(data)
 	end
 end
 
+local function printrcv(data)
+	if data=="\r\n" then return end
+	if sys.getworkmode()==sys.SIMPLE_MODE then
+		if smatch(data,"^%+CENG:.+\r\n$") or smatch(data,"^%+CPIN:.+\r\n$") then return end
+		if data=="OK\r\n" and currcmd=="AT+CPIN?" then return end
+	end
+	
+	return true
+end
+
 --[[
 函数名：procatc
 功能  ：处理虚拟串口收到的数据
@@ -251,7 +261,7 @@ end
 返回值：无
 ]]
 local function procatc(data)
-	print("atc:",data)
+	if printrcv(data) then print("atc:",data) end
 	
   -- 继续接收多行反馈直至出现OK为止
 	if interdata and cmdtype == MLINE then
@@ -449,7 +459,9 @@ local function sendat()
 	sys.timer_start(atimeout,TIMEOUT)
 	if curetry then sys.timer_start(retrytimeout,curetry.timeout or RETRYTIMEOUT) end
 
-	print("sendat:",currcmd)
+	if not (sys.getworkmode()==sys.SIMPLE_MODE and currcmd=="AT+CPIN?") then
+		print("sendat:",currcmd)
+	end
 	--向虚拟串口中发送AT命令
 	vwrite(uart.ATC,currcmd .. "\r")
 end

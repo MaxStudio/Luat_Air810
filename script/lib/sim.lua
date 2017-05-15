@@ -84,13 +84,24 @@ local function rsp(cmd,success,response,intermediate)
 		imsi = intermediate
 		sys.dispatch("IMSI_READY")
 	elseif cmd=="AT+CPIN?" then
-		base.print("sim.rsp",cmd,success,response,intermediate)
+		--base.print("sim.rsp",cmd,success,response,intermediate)
 		if not success or intermediate==nil then
 			urc("+CPIN:NOT INSERTED","+CPIN")
 		else
 			urc(intermediate,smatch(intermediate,"((%+%w+))"))
 		end
 		ril.regurc("+CPIN",urc)
+	end
+end
+
+local function setcpinsta(newsta,data)
+	if cpinsta~=newsta then
+		base.print('setcpinsta',data)
+		if newsta=="RDY" then
+			req("AT+ICCID")
+			req("AT+CIMI")
+		end
+		cpinsta = newsta
 	end
 end
 
@@ -103,27 +114,19 @@ end
 返回值：无
 ]]
 function urc(data,prefix)
-	base.print('simurc',data,prefix)
+	--base.print('simurc',data,prefix)
 	
 	if prefix == "+CPIN" then
 		--sim卡正常
 		if smatch(data,"+CPIN:%s*READY") then
-			if cpinsta~="RDY" then
-				req("AT+ICCID")
-				req("AT+CIMI")				
-				cpinsta = "RDY"
-			end
+			setcpinsta("RDY",data)
 			sys.dispatch("SIM_IND","RDY")
 		--未检测到sim卡
 		elseif smatch(data,"+CPIN:%s*NOT INSERTED") then
-			if cpinsta~="NIST" then				
-				cpinsta = "NIST"
-			end
+			setcpinsta("NIST",data)
 			sys.dispatch("SIM_IND","NIST")
 		else
-			if cpinsta~="NORDY" then				
-				cpinsta = "NORDY"
-			end
+			setcpinsta("NORDY",data)
 			if data == "+CPIN: SIM PIN" then
 				sys.dispatch("SIM_IND_SIM_PIN")	
 			end
@@ -132,14 +135,10 @@ function urc(data,prefix)
 	elseif prefix == '+ESIMS' then	
 		base.print('testetst',data)
 		if data == '+ESIMS: 1' then
-			if cpinsta~="RDY" then				
-				cpinsta = "RDY"
-			end
+			setcpinsta("RDY",data)
 			sys.dispatch("SIM_IND","RDY")
 		else
-			if cpinsta~="NIST" then 				
-				cpinsta = "NIST"
-			end
+			setcpinsta("NIST",data)
 			sys.dispatch("SIM_IND","NIST")
 		end	
 	end
