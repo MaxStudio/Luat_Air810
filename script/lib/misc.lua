@@ -211,6 +211,17 @@ function getimei()
 	return imei or ""
 end
 
+--[[
+函数名：setsn
+功能  ：设置SN
+参数  ：
+    s：新SN
+返回值：无
+]]
+function setsn(s)
+    req("AT+WISN=\""..s.."\"")
+end
+
 function setflymode(val)
 	req("AT+CFUN="..(val and 0 or 1))
 end
