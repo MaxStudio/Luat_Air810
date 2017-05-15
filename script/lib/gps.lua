@@ -419,8 +419,8 @@ local function proc(s)
 
 	--可见卫星个数
 	numofsate = tonumber(numofsate or "0")
-	if numofsate > 9 then
-		numofsate = 9
+	if numofsate > 12 then
+		numofsate = 12
 	end
 	if numofsate > 0 then
 		gps.satenum = numofsate
@@ -428,8 +428,8 @@ local function proc(s)
 
 	--定位使用的卫星个数
 	numoflocationsate = tonumber(numoflocationsate or "0")
-	if numoflocationsate > 9 then
-		numoflocationsate = 9
+	if numoflocationsate > 12 then
+		numoflocationsate = 12
 	end
 	if numoflocationsate > 0 then
 		gps.locationsatenum = numoflocationsate
