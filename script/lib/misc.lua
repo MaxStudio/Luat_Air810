@@ -212,6 +212,17 @@ function getimei()
 end
 
 --[[
+函数名：setimei
+功能  ：设置IMEI
+参数  ：
+    s：新IMEI
+返回值：无
+]]
+function setimei(s)
+  req("AT+EGMR=1,7,\""..s.."\"")
+end
+
+--[[
 函数名：setsn
 功能  ：设置SN
 参数  ：
