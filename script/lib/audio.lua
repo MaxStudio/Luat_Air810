@@ -51,7 +51,7 @@ end
 功能  ：开始录音
 参数  ：
 		id：录音id，会根据这个id存储录音文件，取值范围0-4
-		duration：录音时长，单位毫秒
+		duration：录音时长，单位秒
 返回值：true
 ]]
 function beginrecord(id,duration)
@@ -96,6 +96,17 @@ end
 function delrecord(id,duration)
 	os.remove((type(id)=="number" and ("/rcd"..id..".amr") or id))
 	return true
+end
+
+--[[
+函数名：getfilepath
+功能  ：获取录音文件的路径
+参数  ：
+    id：录音id，会根据这个id存储录音文件，取值范围0-4
+返回值：录音文件的路径
+]]
+function getfilepath(id)
+  return (type(id)=="number" and ("/rcd"..id..".amr") or id)
 end
 
 --[[
