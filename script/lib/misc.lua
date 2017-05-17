@@ -207,6 +207,21 @@ function getblver()
 	return blver or ""
 end
 
+--[[
+函数名：isnvalid
+功能  ：判断sn是否有效
+参数  ：无
+返回值：有效返回true，否则返回false
+]]
+function isnvalid()
+  local snstr,sninvalid = getsn(),""
+  local len,i = string.len(snstr)
+  for i=1,len do
+    sninvalid = sninvalid.."0"
+  end
+  return snstr~=sninvalid
+end
+
 function getimei()
 	return imei or ""
 end
