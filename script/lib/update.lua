@@ -1,8 +1,6 @@
 --[[
 模块名称：远程升级
 模块功能：只在每次开机或者重启时，连接升级服务器，如果服务器存在新版本，lib和应用脚本远程升级
-请先参考：http://www.openluat.com/forum.php?mod=viewthread&tid=2397&extra=page%3D1
-然后再阅读本模块
 模块最后修改时间：2017.02.09
 ]]
 
@@ -33,8 +31,10 @@ local updmode,updsuc = base.UPDMODE or 0
 
 --PROTOCOL：传输层协议，只支持TCP和UDP
 --SERVER,PORT为服务器地址和端口
-local PROTOCOL,SERVER,PORT = "UDP","ota.airm2m.com",2234
---升级包位置
+local PROTOCOL,SERVER,PORT = "UDP","api.airm2m.com",12410
+--是否使用用户自定义的升级服务器
+local usersvr
+--升级包保存路径
 local UPDATEPACK = "/luazip/update.bin"
 
 -- GET命令等待时间
@@ -42,9 +42,11 @@ local CMD_GET_TIMEOUT = 10000
 -- 错误包(包ID或者长度不匹配) 在一段时间后进行重新获取
 local ERROR_PACK_TIMEOUT = 10000
 -- 每次GET命令重试次数
-local CMD_GET_RETRY_TIMES = 3
+local CMD_GET_RETRY_TIMES = 5
 --socket id
 local lid
+--设置定时升级的时间周期，单位秒，0表示关闭定时升级
+local period = 0
 --状态机状态
 --IDLE：空闲状态
 --CHECK：“查询服务器是否有新版本”状态
@@ -63,6 +65,12 @@ timezone = nil
 BEIJING_TIME = 8
 GREENWICH_TIME = 0
 
+--[[
+函数名：print
+功能  ：打印接口，此文件中的所有打印都会加上update前缀
+参数  ：无
+返回值：无
+]]
 local function print(...)
 	base.print("update",...)
 end
@@ -81,7 +89,7 @@ local function save(data)
 	local f = io.open(UPDATEPACK,mode)
 
 	if f == nil then
-		print("update.save:file nil")
+		print("save:file nil")
 		return
 	end
 
@@ -102,7 +110,7 @@ end
 返回值：无
 ]]
 local function retry(param)
-	-- 升级状态已结束直接退出
+	--升级状态已结束直接退出
 	if state ~= "UPDATE" and state ~= "CHECK" then
 		return
 	end
@@ -140,7 +148,10 @@ end
 返回值：无
 ]]
 function reqget(index)
-	send(lid,string.format("Get%d,%d",index,projectid))
+	send(lid,string.format("%sGet%d,%d",
+							usersvr and "" or string.format("0,%s,%s,%s,%s,%s,",base.PRODUCT_KEY,misc.getimei(),misc.isnvalid() and misc.getsn() or "",base.PROJECT.."_"..sys.getcorever(),base.VERSION),
+							index,
+							projectid))
 	--启动“CMD_GET_TIMEOUT毫秒后重试”定时器
 	sys.timer_start(retry,CMD_GET_TIMEOUT)
 end
@@ -153,7 +164,7 @@ end
 返回值：无
 ]]
 local function getpack(data)
-	-- 判断包长度是否正确
+	--判断包长度是否正确
 	local len = string.len(data)
 	if (packid < total and len ~= 1024) or (packid >= total and (len - 2) ~= last) then
 		print("getpack:len not match",packid,len,last)
@@ -161,7 +172,7 @@ local function getpack(data)
 		return
 	end
 
-	-- 判断包序号是否正确
+	--判断包序号是否正确
 	local id = string.byte(data,1)*256+string.byte(data,2)
 	if id ~= packid then
 		print("getpack:packid not match",id,packid)
@@ -169,17 +180,17 @@ local function getpack(data)
 		return
 	end
 
-	-- 停止重试
+	--停止重试
 	retry("STOP")
 
-	-- 保存升级包
+	--保存升级包
 	save(string.sub(data,3,-1))
 	--如果是用户自定义模式，产生一个内部消息UP_PROGRESS_IND，表示升级进度
 	if updmode == 1 or updmode == 2 then
 		dispatch("UP_EVT","UP_PROGRESS_IND",packid*100/total)
 	end
 
-	-- 获取下一包数据
+	--获取下一包数据
 	if packid == total then
 		upend(true)
 	else
@@ -209,6 +220,7 @@ function upbegin(data)
 		--从第1个升级包开始
 		packid = 1
 		sys.removegpsdat()
+		--发送请求，获取第1个升级包
 		reqget(packid)
 	--格式错误，升级结束
 	else
@@ -224,13 +236,14 @@ end
 返回值：无
 ]]
 function upend(succ)
+	print("upend",succ)
 	updsuc = succ
 	if not succ then os.remove(UPDATEPACK) end
 	local tmpsta = state
 	state = "IDLE"
 	--停止重试定时器
 	sys.timer_stop(retry)
-	-- 断开链接
+	--断开链接
 	link.close(lid)
 	lid = nil
 	--升级成功并且是自动升级模式则重启
@@ -243,6 +256,7 @@ function upend(succ)
 	end
 	--产生一个内部消息UPDATE_END_IND，目前与飞行模式配合使用
 	dispatch("UPDATE_END_IND")
+	if period~=0 then sys.timer_start(connect,period*1000,"period") end
 end
 
 --[[
@@ -252,8 +266,13 @@ end
 返回值：无
 ]]
 function reqcheck()
+	print("reqcheck",usersvr)
 	state = "CHECK"
-	send(lid,string.format("%s,%s,%s",misc.getimei(),base.PROJECT.."_"..sys.getcorever(),base.VERSION))
+	if usersvr then
+		send(lid,string.format("%s,%s,%s",misc.getimei(),base.PROJECT.."_"..sys.getcorever(),base.VERSION))
+	else
+		send(lid,string.format("0,%s,%s,%s,%s,%s",base.PRODUCT_KEY,misc.getimei(),misc.isnvalid() and misc.getsn() or "",base.PROJECT.."_"..sys.getcorever(),base.VERSION))
+	end
 	sys.timer_start(retry,CMD_GET_TIMEOUT)
 end
 
@@ -281,7 +300,7 @@ local function nofity(id,evt,val)
 		end
 	--连接被动断开
 	elseif evt == "STATE" and val == "CLOSED" then
-		 -- 服务器断开链接 直接判定升级失败
+		 --服务器断开链接 直接判定升级失败
 		upend(false)
 	end
 end
@@ -336,6 +355,7 @@ local function recv(id,data)
 		else
 			upend(false)
 		end
+	--“升级中”状态
 	elseif state == "UPDATE" then
 		if data == "ERR" then
 			upend(false)
@@ -377,6 +397,24 @@ function getmode()
 	return updmode
 end
 
+function connect()
+	print("connect",lid,updsuc)
+	if not lid and not updsuc then
+		lid = link.open(nofity,recv,"update")
+		link.connect(lid,PROTOCOL,SERVER,PORT)
+	end
+end
+
+local function defaultbgn()
+	print("defaultbgn",usersvr)
+	if not usersvr then
+		base.assert(base.PRODUCT_KEY and base.PROJECT and base.VERSION,"undefine PRODUCT_KEY or PROJECT or VERSION in main.lua")
+		base.assert(not string.match(base.PROJECT,","),"PROJECT in main.lua format error")
+		base.assert(string.match(base.VERSION,"%d%.%d%.%d") and string.len(base.VERSION)==5,"VERSION in main.lua format error")
+		connect()
+	end
+end
+
 --[[
 函数名：setup
 功能  ：配置服务器的传输协议、地址和端口
@@ -389,14 +427,40 @@ end
 function setup(prot,server,port)
 	if prot and server and port then
 		PROTOCOL,SERVER,PORT = prot,server,port
-		-- 只有当定义了项目标识与版本号才支持远程升级
-		print("setup",base.PROJECT,base.VERSION,updmode)
-		if base.PROJECT ~= nil and base.VERSION ~= nil and updmode ~= nil then
-			--连接服务器
-			lid = link.open(nofity,recv,"update")
-			link.connect(lid,PROTOCOL,SERVER,PORT)
-		end
+		usersvr = true
+		--只有当定义了项目标识与版本号才支持远程升级
+		base.assert(base.PROJECT and base.VERSION,"undefine PROJECT or VERSION in main.lua")		
+		connect()
 	end
 end
 
+--[[
+函数名：setperiod
+功能  ：配置定时升级的周期
+参数  ：
+        prd：number类型，定时升级的周期，单位秒；0表示关闭定时升级功能，其余值要大于等于60秒
+返回值：无
+]]
+function setperiod(prd)
+	base.assert(prd==0 or prd>=60,"undefine PROJECT or VERSION in main.lua")
+	print("setperiod",prd)
+	period = prd
+	if prd==0 then
+		sys.timer_stop(connect,"period")
+	else
+		sys.timer_start(connect,prd*1000,"period")
+	end
+end
 
+--[[
+函数名：request
+功能  ：实时启动一次升级
+参数  ：无
+返回值：无
+]]
+function request()
+	print("request")
+	connect()
+end
+
+sys.timer_start(defaultbgn,10000)
