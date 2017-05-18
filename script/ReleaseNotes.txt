@@ -1,3 +1,28 @@
+发布时间：2017/5/18 9:46:35
+修改记录：
+    一、lib脚本修改
+		lib脚本版本号：1.0.2
+		支持lib脚本的最小core软件版本号：Luat_V0004_Air810
+        (1) GPS定位成功，分发内部消息'GPS_FIX_SUC'
+		(2) 修正'sys.setworkmode'工作不正常的问题
+        (3) 最大的GPS定位卫星个数不正确
+		(4) 在misc模块里添加setsn、setimei、isnvalid接口
+		(5) 增加record模块
+		(6) 在audio模块里添加getfilepath接口
+		(7) 增加ntp模块
+		(8) 增加lbsloc模块
+		(9) 在net模块增加cellinfoind、getmulticell接口
+    二、demo脚本修改
+        (1) xiaoman_gps_tracker\whole_test 增加小蛮GPS定位器的demo
+		(2) write_sn 增加写sn号的demo
+		(3) write_imei 增加写imei号的demo
+		(4) record 增加录音的demo
+		(5) ntp 增加网络时间同步的demo
+		(6) lbs_loc 增加基站定位的demo
+		(7) json 增加json的demo
+		(8) update 增加固件升级的demo
+		(9) uart_prot1 增加通过uart解析外围设备输入报文的demo
+
 发布时间：2017/05/10 19:13:45
 修改记录：
     一、lib脚本修改
