@@ -147,6 +147,9 @@ local function sckrsp(id,evt,val)
 			scks[idx].concause = cause
 		end
 		scks[idx].rsp(idx,"DISCONNECT",true,cause)
+	elseif evt == "CLOSE" then
+		scks[idx].rsp(idx,"CLOSE",true)
+		scks[idx] = nil
 	elseif evt == "STATE" and val == "CLOSED" then
 		if #scks[idx].sndpending ~= 0 then
 			--link.connect(id,scks[idx].prot,scks[idx].addr,scks[idx].port)
@@ -189,12 +192,38 @@ local function init(idx,id,cause,prot,addr,port,rsp,rcv,discause)
 	}
 end
 
+--[[
+函数名：create
+功能  ：创建socket（如果socket不存在）
+参数  ：
+		idx：number类型，socket id，如果使用了mqtt模块，取值范围是1、2、3；如果没使用mqtt模块，取值范围是1、2、3、4、5。[必选]
+		prot：string类型，传输层协议，目前仅支持"TCP"和"UDP"
+		addr：string类型，服务器地址，支持IP地址和域名
+		port：number类型，服务器端口
+		rsp：function类型，socket的状态处理函数
+		rcv：function类型，socket的数据接收处理函数
+		cause：暂时无用，后续扩展使用
+返回值：true表示成功创建了socket，false表示没有成功创建
+]]
 function create(idx,prot,addr,port,rsp,rcv,cause)
 	if not checkidx(0,idx,"create") or checkidx(1,idx,"create") then return end
 	init(idx,link.open(sckrsp,sckrcv),cause,prot,addr,port,rsp,rcv)
 	return true
 end
 
+--[[
+函数名：connect
+功能  ：创建socket（如果socket不存在），并且连接服务器
+参数  ：
+		idx：number类型，socket id，如果使用了mqtt模块，取值范围是1、2、3；如果没使用mqtt模块，取值范围是1、2、3、4、5。[必选]
+		prot：string类型，传输层协议，目前仅支持"TCP"和"UDP"
+		addr：string类型，服务器地址，支持IP地址和域名
+		port：number类型，服务器端口
+		rsp：function类型，socket的状态处理函数
+		rcv：function类型，socket的数据接收处理函数
+		cause：暂时无用，后续扩展使用
+返回值：true表示成功调用了连接接口（连接结果会有异步消息通知到socket状态处理函数中），false表示没有成功调用连接接口
+]]
 function connect(idx,prot,addr,port,rsp,rcv,cause)
 	if not checkidx(0,idx,"connect") then return end
 	local discause,sckid
@@ -224,6 +253,17 @@ function connect(idx,prot,addr,port,rsp,rcv,cause)
 	return true
 end
 
+--[[
+函数名：send
+功能  ：发送数据
+参数  ：
+		idx：number类型，socket id，如果使用了mqtt模块，取值范围是1、2、3；如果没使用mqtt模块，取值范围是1、2、3、4、5。[必选]
+		data：要发送的数据
+		para：发送的参数
+		pos：暂时无用，后续扩展使用
+		ins：暂时无用，后续扩展使用
+返回值：true表示成功调用了发送接口（发送结果会有异步消息通知到socket状态处理函数中），false表示没有成功调用发送接口
+]]
 function send(idx,data,para,pos,ins)
 	if not checkidx1(idx,"send") then return end
 	if not data or string.len(data) == 0 then print("send data empty") return end
@@ -251,10 +291,30 @@ function send(idx,data,para,pos,ins)
 	return true
 end
 
+--[[
+函数名：disconnect
+功能  ：断开一个socket连接
+参数  ：
+		idx：number类型，socket id，如果使用了mqtt模块，取值范围是1、2、3；如果没使用mqtt模块，取值范围是1、2、3、4、5。[必选]
+		cause：目前无用，后续扩展使用[可选]
+返回值：true表示成功调用了断开接口（断开结果会有异步消息通知到socket的状态处理函数中），false表示没有成功调用断开接口
+]]
 function disconnect(idx,cause)
 	if not checkidx1(idx,"disconnect") then return end
 	scks[idx].discause = cause
 	return link.disconnect(scks[idx].id) --关闭连接
+end
+
+--[[
+函数名：close
+功能  ：断开一个socket连接,并且销毁
+参数  ：
+    idx：number类型，socket id，如果使用了mqtt模块，取值范围是1、2、3；如果没使用mqtt模块，取值范围是1、2、3、4、5。[必选]
+返回值：true表示成功调用了断开接口（断开结果会有异步消息通知到socket的状态处理函数中），false表示没有成功调用断开接口
+]]
+function close(idx)
+  if not checkidx1(idx,"close") then return end
+  return link.close(scks[idx].id) --销毁连接
 end
 
 function isactive(idx)
