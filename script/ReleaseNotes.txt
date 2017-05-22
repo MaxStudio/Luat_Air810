@@ -1,3 +1,15 @@
+发布时间：2017/5/22 16:25:07
+修改记录：
+    一、lib脚本修改
+		lib脚本版本号：1.0.3
+		支持lib脚本的最小core软件版本号：Luat_V0005_Air810
+        (1) 增加aliyuniotauth、luatyuniot、aliyuniot库模块
+		(2) 在socket库模块里增加close接口
+    二、demo脚本修改
+        (1) luatyun 增加MQTT_TCP连接Luat云后台的demo
+		(2) aliyun 增加MQTT_TCP连接阿里云物联网后台的demo
+		(3) 完善一些demo的注释
+
 发布时间：2017/5/18 9:46:35
 修改记录：
     一、lib脚本修改
