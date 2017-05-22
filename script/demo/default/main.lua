@@ -10,7 +10,7 @@ require"sys"
 这里是最早可以设置trace口的地方，代码写在这里可以保证UART口尽可能的输出“开机就出现的错误信息”
 如果写在后面的其他位置，很有可能无法输出错误信息，从而增加调试难度
 ]]
-sys.opntrace(1,1)
+sys.opntrace(true,1)
 --加载硬件看门狗功能模块
 require"wdt"
 require"linkair"
