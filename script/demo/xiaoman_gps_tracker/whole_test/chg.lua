@@ -82,6 +82,15 @@ function getlev()
 	return inf.lev
 end
 
+--[[
+函数名：getstate
+功能  ：获取充电状态
+参数  ：无
+返回值：充电状态
+		0 - 没有充电
+		1 - 正在充电
+		2 - 停止充电
+]]
 function getstate()
 	return inf.state
 end
