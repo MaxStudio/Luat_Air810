@@ -4,9 +4,13 @@
 
 
 demo中的应用示例：
+aliyun：MQTT_TCP连接阿里云物联网后台
+
 audio：音频播放
 
 call：语音通话
+
+default：Air810的默认出厂软件，可以使用时间线APP查看模块的基站位置
 
 gpio：测试gpio
    gpio_single：纯gpio控制
@@ -20,6 +24,8 @@ i2c：i2c通信
 json：json编解码测试
 
 lbs_loc：根据多基站获取经纬度
+
+luatyun：MQTT_TCP连接Luat云后台
 
 mqtt：mqtt应用
 
