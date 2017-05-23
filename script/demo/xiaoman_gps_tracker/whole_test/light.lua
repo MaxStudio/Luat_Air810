@@ -59,6 +59,9 @@ local function init()
 		tled[i].on = false
 		tled[i].prd = 1000
 	end
+	
+    pins.setdir(pio.OUTPUT,pinscfg.LIGHTB)
+    pins.set(false,pinscfg.LIGHTB)
 end
 
 local function starttimer(idx,cb,prd)
