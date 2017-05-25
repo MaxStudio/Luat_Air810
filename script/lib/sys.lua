@@ -495,6 +495,8 @@ function init(mode,lprfnc)
 	base.require"keypad"
 	--设置AT命令的虚拟串口
 	uart.setup(uart.ATC,0,0,uart.PAR_NONE,uart.STOP_1)
+	--打开LDO_VIB
+	pmd.ldoset(1,pmd.LDO_VIB)
 	print("init mode :",mode,lprfnc)
 	print("poweron reason:",rtos.poweron_reason(),mode,base.PROJECT,base.VERSION)
 
