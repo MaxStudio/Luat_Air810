@@ -10,6 +10,7 @@ require"patch"
 local base = _G
 local table = require"table"
 local rtos = require"rtos"
+local pmd = require"pmd"
 local uart = require"uart"
 local io = require"io"
 local os = require"os"
