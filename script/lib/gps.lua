@@ -188,13 +188,13 @@ local function getstrength(sg)
 				local front = ssub(gps.gsv,1,m2)
 				local n1,n2 = sfind(front,"%d+,%d*,%d*,%d*,$")
 				if n1 and n2 then
-					if (gps.gsaprefix == "GP" and tonumber(id) <= 32) or gps.gsaprefix == "" then
+					if (gps.gsvprefix == "GP" and tonumber(id) <= 32) or gps.gsvprefix == "" then
 						gps.gsv = ssub(gps.gsv,1,n1-1)..cur..ssub(gps.gsv,n2+1,-1)
 					end
 				end
 			end
 		else
-			if (gps.gsaprefix == "GP" and tonumber(id) <= 32) or gps.gsaprefix == "" then
+			if (gps.gsvprefix == "GP" and tonumber(id) <= 32) or gps.gsvprefix == "" then
 				gps.gsv = gps.gsv..cur
 			end
 		end
@@ -335,6 +335,24 @@ local function rtctolocal(y,m,d,hh,mm,ss)
 end
 
 --[[
+函数名：needupdatetime
+功能  ：是否需要更新系统时间为新时间
+参数  ：
+		newtime：新时间
+返回值：true需要更新，false不需要更新
+]]
+function needupdatetime(newtime)
+	if newtime and os.time(newtime) and os.date("*t") and os.time(os.date("*t")) then
+		local secdif = os.difftime(os.time(os.date("*t")),os.time(newtime))
+		if secdif and secdif >= 60 or secdif <= -60 then
+			print("needupdatetime",secdif)
+			return true
+		end
+	end
+	return false
+end
+
+--[[
 函数名：proc
 功能  ：处理每条NEMA数据
 参数  ：
@@ -374,14 +392,11 @@ local function proc(s)
 			gps.utctime = {year=2000+yy,month=mm,day=dd,hour=h,min=m,sec=s}
 			if gps.timezone then
 				local newtime = rtctolocal(yy,mm,dd,h,m,s)
-				misc.setclk(newtime,60)
+				if needupdatetime(newtime) then
+					misc.setclock(newtime)
+				end
 			end
 		end
-	--[[elseif smatch(s, "GLL") then
-		latti,lattir,gps.latyp,longti,longtir,gps.longtyp,gpsfind = smatch(s,"GLL,(%d+)%.(%d+),([NS]),(%d+)%.(%d+),([EW]),%d*%.%d*,(%w),")
-		if gpsfind == "A" and longti ~= nil and longtir ~= nil and latti ~= nil and lattir ~= nil  then
-			gps.find = "S"
-		end	]]	
 	--GSV数据
 	elseif smatch(s,"GSV") and not smatch(s,"GLGSV") then
 		numofsate = smatch(s,"GSV,%d+,%d+,(%d+)")
@@ -446,6 +461,7 @@ local function proc(s)
 			end
 		end
 	end
+	
 	--方向角
 	if cog1 and cog1 ~= "" then
 		local r1,r2 = smatch(cog1, "(%d+)%.*(%d*)")
@@ -491,7 +507,7 @@ end
 		typ：距离类型
 返回值：typ如果为true，返回的是直线距离(单位米)的平方和；否则返回的是直线距离(单位米)
 ]]
-function diffofloc(latti1, longti1, latti2, longti2)
+function diffofloc(latti1, longti1, latti2, longti2,typ) --typ=true:返回a+b ; 否则是平方和
 	local I1,I2,R1,R2,diff,d
 	I1,R1=smatch(latti1,"(%d+)%.(%d+)")
 	I2,R2=smatch(latti2,"(%d+)%.(%d+)")
@@ -503,8 +519,12 @@ function diffofloc(latti1, longti1, latti2, longti2)
 	R2 = I2 .. ssub(R2,1,5)
 	d = tonumber(R1)-tonumber(R2)
 	d = d*111/100
-	diff =  d* d
-
+	if typ == true then
+		diff =  (d>0 and d or (-d))
+	else
+		diff = d * d
+	end
+		
 	I1,R1=smatch(longti1,"(%d+)%.(%d+)")
 	I2,R2=smatch(longti2,"(%d+)%.(%d+)")
 	if not I1 or not I2 or not R1 or not R2 then
@@ -514,7 +534,12 @@ function diffofloc(latti1, longti1, latti2, longti2)
 	R1 = I1 .. ssub(R1,1,5)
 	R2 = I2 .. ssub(R2,1,5)
 	d = tonumber(R1)-tonumber(R2)
-	diff =  diff + d*d
+	if typ == true then
+		diff =  diff + (d>0 and d or (-d))
+	else
+		diff =  diff + d*d
+	end
+	--diff =  diff + d*d
 	print("all diff:", diff)
 	return diff
 end
@@ -532,6 +557,17 @@ local function stoppaccqry()
 end
 
 --[[
+函数名：setmnea
+功能  ：设置“是否将NEMA数据抛出，提供给外部应用处理”标志
+参数  ：
+		flg：true为抛出NEMA数据，false或者nil不抛出；如果设置了抛出，外部应用注册内部消息"GPS_NMEA_DATA"的处理函数即可接收NEMA数据
+返回值：无
+]]
+function setmnea(flg)
+	nmea_route = flg
+end
+
+--[[
 函数名：read
 功能  ：串口数据接收处理函数
 参数  ：无
@@ -546,6 +582,7 @@ local function read(str)
 		strgps = str
 
 		if slen(strgps) == 0 then
+			--连续读了nogpschipcnt次串口，都没有数据，则认为没有gps芯片
 			if not c.nogps and c.hasgps == 0 and c.gps >= nogpschipcnt then
 				sys.dispatch(GPS_STATE_IND,GPS_NO_CHIP_EVT)
 				c.nogps = true
@@ -553,6 +590,7 @@ local function read(str)
 			end
 			gpsreadloop = false
 		else
+			--串口有数据，则认为有gps芯片
 			if c.hasgps == 0 then
 				c.hasgps = c.gps
 				sys.dispatch(GPS_STATE_IND,GPS_HAS_CHIP_EVT)
@@ -560,6 +598,10 @@ local function read(str)
 		end
 
 		proc(strgps)
+			--如果需要抛出NEMA数据给外部应用使用
+			if nmea_route then
+				sys.dispatch('GPS_NMEA_DATA',strgps)
+			end
 		if c.gpsprt ~= c.gps then
 			c.gpsprt = c.gps
 			print("gps rlt", gps.longtyp,gps.olong,gps.long,gps.latyp,gps.olati,gps.lati,gps.locationsatenum,gps.sn,gps.satenum)
@@ -577,11 +619,13 @@ local function read(str)
 				lastesttimerfunc()
 				startlastesttimer()
 				startpaccqry(true)
+					c.fixitv = c.gps-c.fixbgn
 			end
 			--定位失败
 		elseif ((c.gps - c.gpsfind) > 20 or gps.gnsschange) and gps.state == 1 then
 			print("location fail")
 			if not gps.gnsschange then
+					c.fixbgn = c.gps
 				sys.dispatch(GPS_STATE_IND,GPS_LOCATION_FAIL_EVT)
 				print("dispatch GPS_LOCATION_FAIL_EVT")				
 				stoppaccqry()
@@ -749,12 +793,14 @@ function opengps(tag)
 		print("gps has open")
 		return
 	end
-
+	pm.wake("gps")
 	gps.open = true
 	gps.filterbgn = nil
 	gpscore.open(gpscore.WORK_RAW_MODE)
 
+	gps.gnsschange = false
 	print("gps open")
+	c.fixbgn = c.gps
 	sys.dispatch(GPS_STATE_IND,GPS_OPEN_EVT)
 end
 
@@ -789,7 +835,7 @@ function closegps(tag)
 	end
 
 	gpscore.close()	
-
+	pm.sleep("gps")	
 	gps.open = false
 	if gps.state == 1 then
 		gps.state = 2
@@ -1078,8 +1124,8 @@ function init(ionum,dir,edge,period,id,baud,databits,parity,stopbits,apgspwronup
 	gps.gnsschange = false
 	gps.filterbgn = nil
 	gps.filtertime = 5
-	gps.timezone = GPS_BEIJING_TIME
-	gps.spdtyp = GPS_KILOMETER_SPD
+	gps.timezone = nil
+	gps.spdtyp = GPS_KILOMETER_SPD	
 	gps.opentags = {}
 	gps.isagpspwronupd = (apgspwronupd == nil) and true or apgspwronupd
 
@@ -1088,6 +1134,8 @@ function init(ionum,dir,edge,period,id,baud,databits,parity,stopbits,apgspwronup
 	c.gpsfind = 0
 	c.GpsPrtMod = 180
 	c.gpsprint = 0
+	c.fixbgn = 0
+	c.fixitv = 0
 
 	--emptyque()
 	gps.cgen = 0
@@ -1151,7 +1199,7 @@ end
 function closeuart()
 	print("gps closeuart")
 	uart.close(gps.uartid)
-	rtos.sleep(400)
+	--rtos.sleep(400)
 	sys.timer_stop(read)
 end
 
@@ -1163,6 +1211,10 @@ end
 
 function getutctime()
 	return gps.utctime
+end
+
+function getfixitv()
+	return isfix() and c.fixitv or 0
 end
 
 function isagpspwronupd()
@@ -1201,11 +1253,11 @@ function gpsopenind(success)
 end
 
 function gpsdataind(ty,lens)
-	print("gpsdataind",ty,lens,isopen())
+	--print("gpsdataind",ty,lens,isopen())
 	if isopen() then
 		local strgps = ""	
 		strgps = gpscore.read(lens)	
-		print("!!! gpsdataind", strgps)
+		print(strgps)
 		if smatch(strgps,"PMTK010,002*2") then
 			print("syy gpsdataind",strgps)
 			sys.dispatch("AGPS_WRDATE")		
@@ -1381,12 +1433,9 @@ local function gpsstatind(id,evt)
 					if tlist[i].mode == DEFAULT then
 						if isexisttimeritem() then sys.timer_start(timerfunc,1000) end
 					end
-				end
-			end
+				end				
+			end			
 		end
-		sys.dispatch("GPS_FIX_SUC")
-  elseif evt == gps.GPS_CLOSE_EVT then
-    --TO DO ...
 	end
 	return true
 end

@@ -1,6 +1,5 @@
-module(...,package.seeall)
-
 require"pincfg"
+module(...,package.seeall)
 
 --[[
 函数名：print
@@ -23,11 +22,11 @@ local pin31flg = true
 local function pin31set()
 	pins.set(pin31flg,pincfg.PIN31)
 	pin31flg = not pin31flg
-	print("pin31set",pin31flg and "low" or "high")
 end
 --启动1秒的循环定时器，设置PIN31引脚的输出电平
 sys.timer_loop_start(pin31set,1000)
 -------------------------PIN31测试结束-------------------------
+
 
 -------------------------PIN32测试开始-------------------------
 local pin32flg = true
@@ -40,7 +39,6 @@ local pin32flg = true
 local function pin32set()
 	pins.set(pin32flg,pincfg.PIN32)
 	pin32flg = not pin32flg
-	print("pin32set",pin32flg and "low" or "high")
 end
 --启动1秒的循环定时器，设置PIN32引脚的输出电平
 sys.timer_loop_start(pin32set,1000)

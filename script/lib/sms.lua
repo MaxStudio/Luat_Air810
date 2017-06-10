@@ -24,17 +24,16 @@ local req = ril.request
 --ready：底层短信功能是否准备就绪
 local ready,isn,tlongsms = false,255,{}
 local ssub,slen,sformat,smatch = string.sub,string.len,string.format,string.match
-
+local tsend={}
 --[[
   smsreadycb: 短信就绪的用户处理函数
-  newsmscb: 新短信的用户处理函数
   newlongsmscb: 新长短信的用户处理函数
 ]]
-local smsreadycb,newsmscb,newlongsmscb
+local smsreadycb,newlongsmscb
 
 --[[
 函数名：_send
-功能  ：发送短信
+功能  ：发送短信(内部接口)
 参数  ：num,号码
         data:短信内容
 返回值：true：发送成功，false发送失败
@@ -51,6 +50,8 @@ local function _send(num,data)
         --分配一个序列号，范围为0-255
 		isn = isn==255 and 0 or isn+1
 	end
+
+    table.insert(tsend,{sval=pducnt,rval=0,flg=true})--sval发送的包数，rval收到的包数
 	
 	if ssub(num,1,1) == "+" then
 		numlen = sformat("%02X",slen(num)-1)
@@ -295,7 +296,20 @@ local function rsp(cmd,success,response,intermediate)
 	elseif prefix == "+CMGD" then
 		dispatch("SMS_DELETE_CNF",success)
 	elseif prefix == "+CMGS" then
-		dispatch("SMS_SEND_CNF",success)
+        --如果是短短信，直接发送短信确认消息
+        if tsend[1].sval == 1 then--{sval=pducnt,rval=0,flg=true}
+            table.remove(tsend,1)
+            dispatch("SMS_SEND_CNF",success)
+        --如果是长短信，所有cmgs之后，才抛出SMS_SEND_CNF,所有cmgs都成功，才true，其余都是false
+        else
+            tsend[1].rval=tsend[1].rval+1
+            --只要其中有发送失败的短信，则整个长短信将标记为发送失败
+            if not success then tsend[1].flg=false end
+            if tsend[1].sval == tsend[1].rval then
+                dispatch("SMS_SEND_CNF",tsend[1].flg)
+                table.remove(tsend,1)
+            end
+        end
 	end
 end
 --使用PDU模式发送
@@ -528,6 +542,8 @@ local function newsms(pos)
 	end
 end
 
+--新短信的用户处理函数
+local newsmscb
 --[[
 函数名：regnewsmscb
 功能  ：注册新短信的用户处理函数

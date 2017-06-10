@@ -99,8 +99,7 @@ local function sndack(idx,suc,item)
 	end
 end
 
---对此连接的状态通知和处理的程序
-local function sckrsp(id,evt,val)
+local function sckrsp(id,evt,val)--对此连接的状态通知和处理的程序
 	local idx = getidxbyid(id)
 	if not idx then print("sckrsp err idx",id,evt,val) return end
 	print("sckrsp",id,evt,val)
@@ -163,8 +162,7 @@ local function sckrsp(id,evt,val)
 	end
 end
 
---对此连接收到数据进行处理的程序
-local function sckrcv(id,data)
+local function sckrcv(id,data)--对此连接收到数据进行处理的程序
 	scks[getidxbyid(id)].rcv(getidxbyid(id),data)
 end
 
@@ -309,12 +307,12 @@ end
 函数名：close
 功能  ：断开一个socket连接,并且销毁
 参数  ：
-    idx：number类型，socket id，如果使用了mqtt模块，取值范围是1、2、3；如果没使用mqtt模块，取值范围是1、2、3、4、5。[必选]
+		idx：number类型，socket id，如果使用了mqtt模块，取值范围是1、2、3；如果没使用mqtt模块，取值范围是1、2、3、4、5。[必选]
 返回值：true表示成功调用了断开接口（断开结果会有异步消息通知到socket的状态处理函数中），false表示没有成功调用断开接口
 ]]
 function close(idx)
-  if not checkidx1(idx,"close") then return end
-  return link.close(scks[idx].id) --销毁连接
+	if not checkidx1(idx,"close") then return end
+	return link.close(scks[idx].id) --销毁连接
 end
 
 function isactive(idx)

@@ -68,6 +68,17 @@ function getmnc()
 end
 
 --[[
+函数名：getstatus
+功能  ：获取sim卡的状态
+参数  ：无
+返回值：true表示sim卡正常，false或者nil表示未检测到卡或者卡异常
+注意：开机lua脚本运行之后，会发送at命令去查询状态，所以需要一定时间才能获取到状态。开机后立即调用此接口，基本上返回nil
+]]
+function getstatus()
+	return cpinsta=="RDY"
+end
+
+--[[
 函数名：rsp
 功能  ：本功能模块内“通过虚拟串口发送到底层core软件的AT命令”的应答处理
 参数  ：
@@ -82,6 +93,7 @@ local function rsp(cmd,success,response,intermediate)
 		iccid = smatch(intermediate,"+ICCID:%s*(%w+)") or ""
 	elseif cmd == "AT+CIMI" then
 		imsi = intermediate
+		--产生一个内部消息IMSI_READY，通知已经读取imsi
 		sys.dispatch("IMSI_READY")
 	elseif cmd=="AT+CPIN?" then
 		--base.print("sim.rsp",cmd,success,response,intermediate)

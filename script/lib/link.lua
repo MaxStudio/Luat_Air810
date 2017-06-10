@@ -14,7 +14,7 @@ local net = require"net"
 local rtos = require"rtos"
 local sim = require"sim"
 local socket = require"tcpipsock"
-module("link",package.seeall)
+module(...,package.seeall)
 
 --加载常用的全局函数至本地
 local print = base.print
@@ -24,18 +24,19 @@ local tostring = base.tostring
 local req = ril.request
 local extapn
 --最大socket id，从0开始，所以同时支持的socket连接数是8个
-local MAXLINKS = 7 -- id 0-7
---IP环境建立失败时间隔10秒重连
-local IPSTART_INTVL = 10000
+local MAXLINKS = 7
+--IP环境建立失败时间隔5秒重连
+local IPSTART_INTVL = 5000
 
 --socket连接表
 local linklist = {}
 --ipstatus：IP环境状态
 --sckconning：是否连接数据网络
-local ipstatus,sckconning = "IP INITIAL"
+--shuting：是否正在关闭数据网络
+local ipstatus,sckconning,shuting = "IP INITIAL"
 --GPRS数据网络附着状态，"1"附着，其余未附着
 local cgatt
---apn的名称,用户名,密码
+--apn，用户名，密码
 local apnname = "CMNET"
 local username=''
 local password=''
@@ -47,8 +48,9 @@ local connectnoretinterval
 --flymode：是否处于飞行模式
 --updating：是否正在执行远程升级功能(update.lua)
 --dbging：是否正在执行dbg功能(dbg.lua)
+--ntping：是否正在执行NTP时间同步功能(ntp.lua)
 --shutpending：是否有等待处理的进入AT+CIPSHUT请求
-local apnflag,checkciicrtm,flymode,updating,dbging,shutpending=true
+local apnflag,checkciicrtm,flymode,updating,dbging,ntping,shutpending=true
 
 --[[
 函数名：setapn
@@ -133,7 +135,7 @@ end
 参数  ：无
 返回值：无
 ]]
-local function setupIP()
+function setupIP()
 	print("link.setupIP:",ipstatus,cgatt,flymode)
 	--数据网络已激活或者处于飞行模式，直接返回
 	if ipstatus ~= "IP INITIAL" or flymode then
@@ -189,7 +191,7 @@ local function validaction(id,action)
 
 	if ing then
 		--有其他任务在处理时,不允许处理连接,断链或者关闭是可以的
-		if action == "CONNECT" then
+		if action == "CONNECT" and linklist[id].state~= "SHUTING" then
 			print("link.validaction: action running",linklist[id].state,action)
 			return false
 		end
@@ -310,7 +312,7 @@ function connect(id,protocol,address,port)
 	linklist[id].state = "CONNECTING"
 
 	if cc and cc.anycallexist() then
-		-- 如果打开了通话功能 并且当前正在通话中使用异步通知连接失败
+		--如果打开了通话功能 并且当前正在通话中使用异步通知连接失败
 		print("link.connect:failed cause call exist")
 		sys.dispatch("LINK_ASYNC_LOCAL_EVENT",statusind,id,"CONNECT FAIL")
 		return true
@@ -318,7 +320,7 @@ function connect(id,protocol,address,port)
 
 	local connstr = string.format("AT+CIPSTART=%d,\"%s\",\"%s\",%s",id,protocol,address,port)
 
-	if (ipstatus ~= "IP STATUS" and ipstatus ~= "IP PROCESSING") or sckconning then
+	if (ipstatus ~= "IP STATUS" and ipstatus ~= "IP PROCESSING") or sckconning or shuting then
 		-- ip环境未准备好先加入等待
 		linklist[id].pending = connstr
 	else
@@ -420,9 +422,10 @@ local function recv(id,data)
 	end
 end
 
+--[[ ipstatus查询返回的状态不提示
 function linkstatus(data)
-
 end
+]]
 
 --[[
 函数名：usersckisactive
@@ -484,23 +487,22 @@ function closecnf(id,result)
 		print("link.closecnf:error",id)
 		return
 	end
-	-- 不管任何的close结果,链接总是成功断开了,所以直接按照链接断开处理
+	--不管任何的close结果,链接总是成功断开了,所以直接按照链接断开处理
 	if linklist[id].state == "DISCONNECTING" then
 		linklist[id].state = "CLOSED"
 		linklist[id].notify(id,"DISCONNECT","OK")
 		usersckntfy(id,false)
 		stopconnectingtimer(id)
-		-- 连接注销,清除维护的连接信息,清除urc关注
-	elseif linklist[id].state == "CLOSING" then
-		-- 连接注销,清除维护的连接信息,清除urc关注
+	--连接注销,清除维护的连接信息,清除urc关注
+	elseif linklist[id].state == "CLOSING" then		
 		local tlink = linklist[id]
 		usersckntfy(id,false)
 		linklist[id] = nil
-		tlink.notify(id,"CLOSE","OK")
+		tlink.notify(id,"CLOSE","OK")		
 		stopconnectingtimer(id)
-	elseif linklist[id].state == "SHUTING" then
+	elseif linklist[id].state == "SHUTING" or shuting then
 		linklist[id].state = "CLOSED"
-		linklist[id].notify(id,"STATE","CLOSED")
+		linklist[id].notify(id,"STATE","SHUTED")
 	else
 		print("link.closecnf:error",linklist[id].state)
 	end
@@ -535,15 +537,15 @@ function statusind(id,state)
 	--socket如果处于正在连接的状态，或者返回了连接成功的状态通知
 	if linklist[id].state == "CONNECTING" or state == "CONNECT OK" then
 		--连接类型的事件
-		evt = "CONNECT"
+		evt = "CONNECT"		
 	else
 		--状态类型的事件
 		evt = "STATE"
 	end
 
-	-- 除非连接成功,否则连接仍然还是在关闭状态
+	--除非连接成功,否则连接仍然还是在关闭状态
 	if state == "CONNECT OK" then
-		linklist[id].state = "CONNECTED"
+		linklist[id].state = "CONNECTED"		
 	else
 		linklist[id].state = "CLOSED"
 	end
@@ -574,7 +576,12 @@ local function connpend()
 			v.pending = nil
 			break
 		end
-	end
+	end	
+end
+
+local ipstatusind
+function regipstatusind()
+	ipstatusind = true
 end
 
 --[[
@@ -588,6 +595,10 @@ local function setIPStatus(status)
 	print("ipstatus:",status,ipstatus)
 
 	if ipstatus ~= status then
+		if ipstatusind then
+			sys.dispatch("IP_STATUS_IND",status=="IP GPRSACT" or status=="IP PROCESSING" or status=="IP STATUS")
+		end
+
 		ipstatus = status
 		if ipstatus == "IP STATUS" then
 			connpend()
@@ -608,6 +619,8 @@ end
 返回值：无
 ]]
 local function closeall()
+	shuting = false
+	if ipstatusind then sys.dispatch("IP_SHUTING_IND",false) end
 	local i
 
 	for i = 0,MAXLINKS do
@@ -632,11 +645,14 @@ end
 返回值：无
 ]]
 function shut()
-	--如果正在执行远程升级功能或者dbg功能，则延迟关闭
-	if updating or dbging then shutpending = true return end
+	--如果正在执行远程升级功能或者dbg功能或者ntp功能，则延迟关闭
+	if updating or dbging or ntping then shutpending = true return end
 	closeall()
 	socket.pdp_deactivate()
 	sckconning = false
+	--设置关闭中标志
+	shuting = true
+	if ipstatusind then sys.dispatch("IP_SHUTING_IND",true) end
 	shutpending = false
 end
 reset = shut
@@ -703,7 +719,7 @@ end
 
 sys.regmsg("sock",ntfy)
 
--- 在网络正常后初始化ip
+--gprs网络未附着时，定时查询附着状态的间隔
 local QUERYTIME = 2000
 local querycgatt
 
@@ -718,7 +734,7 @@ local querycgatt
 返回值：无
 ]]
 local function cgattrsp(cmd,success,response,intermediate)
-	print("syy cgattrsp",intermediate)
+	--已附着
 	if intermediate == "+CGATT: 1" then
 		if cgatt ~= "1" then
 			cgatt = "1"
@@ -750,7 +766,7 @@ end
 参数  ：无
 返回值：无
 ]]
-querycgatt = function()
+function querycgatt()
 	--不是飞行模式，才去查询
 	if not flymode then req("AT+CGATT?",nil,cgattrsp,nil,{skip=true}) end
 end
@@ -825,6 +841,13 @@ local function proc(id,para)
 	elseif id=="DBG_END_IND" then
 		dbging = false
 		if shutpending then shut() end
+	--NTP同步开始
+	elseif id=="NTP_BEGIN_IND" then
+		ntping = true
+	--NTP同步结束
+	elseif id=="NTP_END_IND" then
+		ntping = false
+		if shutpending then shut() end
 	end
 	return true
 end
@@ -842,6 +865,6 @@ function getipstatus()
 end
 
 --注册本模块关注的内部消息的处理函数
-sys.regapp(proc,"IMSI_READY","FLYMODE_IND","UPDATE_BEGIN_IND","UPDATE_END_IND","DBG_BEGIN_IND","DBG_END_IND")
+sys.regapp(proc,"IMSI_READY","FLYMODE_IND","UPDATE_BEGIN_IND","UPDATE_END_IND","DBG_BEGIN_IND","DBG_END_IND","NTP_BEGIN_IND","NTP_END_IND")
 sys.regapp(netmsg,"NET_STATE_CHANGED")
 

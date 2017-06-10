@@ -1,22 +1,18 @@
-module(...,package.seeall)
-
 --[[
 模块名称：参数管理
 模块功能：参数初始化、读写以及恢复出厂设置
 模块最后修改时间：2017.02.23
 ]]
 
+module(...,package.seeall)
 
 package.path = "/?.lua;".."/?.luae;"..package.path
 
---[[
-configname: 存储默认参数配置的文件
-econfigname： 存储默认参数配置的加密文件
-paraname: 存储实时参数配置的文件
-para：实时参数表
-]]
-local configname,econfigname,paraname,para = "/lua/config.lua","/lua/config.luae","/para.lua"
-local ssub,sgsub = string.sub,string.gsub
+--默认参数配置存储在configname文件中
+--实时参数配置存储在paraname文件中
+--para：实时参数表
+--config：默认参数表
+local paraname,para,libdftconfig,configname,econfigname = "/para.lua",{}
 
 --[[
 函数名：print
@@ -40,7 +36,7 @@ function restore()
 	fpara:write(fconfig:read("*a"))
 	fpara:close()
 	fconfig:close()
-	para = config
+	upd(true)
 end
 
 --[[
@@ -54,7 +50,7 @@ end
 local function serialize(pout,o)
 	if type(o) == "number" then
 		--number类型，直接写原始数据
-		pout:write(o)
+		pout:write(o)	
 	elseif type(o) == "string" then
 		--string类型，原始数据左右各加上双引号写入
 		pout:write(string.format("%q", o))
@@ -84,13 +80,14 @@ end
 --[[
 函数名：upd
 功能  ：更新实时参数表
-参数  ：无
+参数  ：
+		overide：是否用默认参数强制更新实时参数
 返回值：无
 ]]
-local function upd()
-	for k,v in pairs(config) do
+function upd(overide)
+	for k,v in pairs(libdftconfig) do
 		if k ~= "_M" and k ~= "_NAME" and k ~= "_PACKAGE" then
-			if para[k] == nil then
+			if overide or para[k] == nil then
 				para[k] = v
 			end			
 		end
@@ -127,7 +124,7 @@ end
 		s：是否真正保存，true保存，false或者nil不保存
 返回值：无
 ]]
-local function save(s,flu)
+local function save(s)
 	if not s then return end
 	local f = io.open(paraname,"wb")
 
@@ -141,7 +138,6 @@ local function save(s,flu)
 		end
 	end
 
-	if flu then f:flush() end
 	f:close()
 end
 
@@ -156,7 +152,7 @@ end
 返回值：true
 ]]
 function set(k,v,r,s)
-	local bchg = true
+	local bchg
 	if type(v) == "table" then
 		for kk,vv in pairs(para[k]) do
 			if vv ~= v[kk] then bchg = true break end
@@ -168,8 +164,8 @@ function set(k,v,r,s)
 	if bchg then		
 		para[k] = v
 		save(s or s==nil)
+		if r then sys.dispatch("PARA_CHANGED_IND",k,v,r) end
 	end
-	if r then sys.dispatch("PARA_"..(bchg and "CHANGED" or "SET").."_IND",k,v,r) end
 	return true
 end
 
@@ -185,12 +181,11 @@ end
 返回值：true
 ]]
 function sett(k,kk,v,r,s)
-	print("sett",k)
-	--if para[k][kk] ~= v then
+	if para[k][kk] ~= v then
 		para[k][kk] = v
 		save(s or s==nil)
 		if r then sys.dispatch("TPARA_CHANGED_IND",k,kk,v,r) end
-	--end
+	end
 	return true
 end
 
@@ -200,8 +195,8 @@ end
 参数  ：无
 返回值：无
 ]]
-function flush(s)
-	save(true,s)
+function flush()
+	save(true)
 end
 
 --[[
@@ -243,7 +238,8 @@ end
 返回值：无
 ]]
 function init(dftcfgfile)
-	pcall(require,string.match(dftcfgfile,"(.+)%.lua"))
+	local f
+	f,libdftconfig = pcall(require,string.match(dftcfgfile,"(.+)%.lua"))
 	configname,econfigname = "/lua/"..dftcfgfile,"/lua/"..dftcfgfile.."e"
 	--初始化配置文件，从文件中把参数读取到内存中
 	load()

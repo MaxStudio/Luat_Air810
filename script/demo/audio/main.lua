@@ -1,14 +1,13 @@
---å¿…é¡»åœ¨è¿™ä¸ªä½ç½®å®šä¹‰PROJECTå’ŒVERSIONå˜é‡
---PROJECTï¼šascii stringç±»åž‹ï¼Œå¯ä»¥éšä¾¿å®šä¹‰ï¼Œåªè¦ä¸ä½¿ç”¨,å°±è¡Œ
---VERSIONï¼šascii stringç±»åž‹ï¼Œå¦‚æžœä½¿ç”¨Luatç‰©è”äº‘å¹³å°å›ºä»¶å‡çº§çš„åŠŸèƒ½ï¼Œå¿…é¡»æŒ‰ç…§"X.X.X"å®šä¹‰ï¼ŒXè¡¨ç¤º1ä½æ•°å­—ï¼›å¦åˆ™å¯éšä¾¿å®šä¹‰
+--±ØÐëÔÚÕâ¸öÎ»ÖÃ¶¨ÒåPROJECTºÍVERSION±äÁ¿
+--PROJECT£ºascii stringÀàÐÍ£¬¿ÉÒÔËæ±ã¶¨Òå£¬Ö»Òª²»Ê¹ÓÃ,¾ÍÐÐ
+--VERSION£ºascii stringÀàÐÍ£¬Èç¹ûÊ¹ÓÃLuatÎïÁªÔÆÆ½Ì¨¹Ì¼þÉý¼¶µÄ¹¦ÄÜ£¬±ØÐë°´ÕÕ"X.X.X"¶¨Òå£¬X±íÊ¾1Î»Êý×Ö£»·ñÔò¿ÉËæ±ã¶¨Òå
 PROJECT = "AUDIO"
-VERSION = "1.0.1"
-
+VERSION = "1.0.0"
 require"sys"
 --[[
-å¦‚æžœä½¿ç”¨UARTè¾“å‡ºtraceï¼Œæ‰“å¼€è¿™è¡Œæ³¨é‡Šçš„ä»£ç "--sys.opntrace(true,1)"å³å¯ï¼Œç¬¬2ä¸ªå‚æ•°1è¡¨ç¤ºUART1è¾“å‡ºtraceï¼Œæ ¹æ®è‡ªå·±çš„éœ€è¦ä¿®æ”¹è¿™ä¸ªå‚æ•°
-è¿™é‡Œæ˜¯æœ€æ—©å¯ä»¥è®¾ç½®traceå£çš„åœ°æ–¹ï¼Œä»£ç å†™åœ¨è¿™é‡Œå¯ä»¥ä¿è¯UARTå£å°½å¯èƒ½çš„è¾“å‡ºâ€œå¼€æœºå°±å‡ºçŽ°çš„é”™è¯¯ä¿¡æ¯â€
-å¦‚æžœå†™åœ¨åŽé¢çš„å…¶ä»–ä½ç½®ï¼Œå¾ˆæœ‰å¯èƒ½æ— æ³•è¾“å‡ºé”™è¯¯ä¿¡æ¯ï¼Œä»Žè€Œå¢žåŠ è°ƒè¯•éš¾åº¦
+Èç¹ûÊ¹ÓÃUARTÊä³ötrace£¬´ò¿ªÕâÐÐ×¢ÊÍµÄ´úÂë"--sys.opntrace(true,1)"¼´¿É£¬µÚ2¸ö²ÎÊý1±íÊ¾UART1Êä³ötrace£¬¸ù¾Ý×Ô¼ºµÄÐèÒªÐÞ¸ÄÕâ¸ö²ÎÊý
+ÕâÀïÊÇ×îÔç¿ÉÒÔÉèÖÃtrace¿ÚµÄµØ·½£¬´úÂëÐ´ÔÚÕâÀï¿ÉÒÔ±£Ö¤UART¿Ú¾¡¿ÉÄÜµÄÊä³ö¡°¿ª»ú¾Í³öÏÖµÄ´íÎóÐÅÏ¢¡±
+Èç¹ûÐ´ÔÚºóÃæµÄÆäËûÎ»ÖÃ£¬ºÜÓÐ¿ÉÄÜÎÞ·¨Êä³ö´íÎóÐÅÏ¢£¬´Ó¶øÔö¼Óµ÷ÊÔÄÑ¶È
 ]]
 --sys.opntrace(true,1)
 require"test"

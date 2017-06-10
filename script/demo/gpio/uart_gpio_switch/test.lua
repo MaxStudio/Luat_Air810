@@ -12,7 +12,6 @@ end
 
 --uartuse：引脚当前是否做为uart功能使用，true表示是，其余的表示不是
 local uartid,uartuse = 3,true
-local UART_RXD,UART_TXD = pio.P0_0,pio.P0_1
 --[[
 函数名：uartopn
 功能  ：打开uart
@@ -20,7 +19,7 @@ local UART_RXD,UART_TXD = pio.P0_0,pio.P0_1
 返回值：无
 ]]
 local function uartopn()
-	uart.setup(uartid,115200,8,uart.PAR_NONE,uart.STOP_1,2)	
+	uart.setup(uartid,115200,8,uart.PAR_NONE,uart.STOP_1)	
 end
 
 --[[
@@ -43,8 +42,8 @@ local function switchtouart()
 	print("switchtouart",uartuse)
 	if not uartuse then
 		--关闭gpio功能
-		pio.pin.close(UART_RXD)
-		pio.pin.close(UART_TXD)
+		pio.pin.close(pio.P0_0)
+		pio.pin.close(pio.P0_1)
 		--打开uart功能
 		uartopn()
 		uartuse = true
@@ -63,11 +62,11 @@ local function switchtogpio()
 		--关闭uart功能
 		uartclose()
 		--配置gpio方向
-		pio.pin.setdir(pio.OUTPUT,UART_RXD)
-		pio.pin.setdir(pio.OUTPUT,UART_TXD)
+		pio.pin.setdir(pio.OUTPUT,pio.P0_0)
+		pio.pin.setdir(pio.OUTPUT,pio.P0_1)
 		--输出gpio电平
-		pio.pin.setval(1,UART_RXD)
-		pio.pin.setval(0,UART_TXD)
+		pio.pin.setval(1,pio.P0_0)
+		pio.pin.setval(0,pio.P0_1)
 		uartuse = false
 	end	
 end

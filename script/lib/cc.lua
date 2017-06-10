@@ -7,18 +7,16 @@
 --定义模块,导入依赖库
 local base = _G
 local string = require"string"
+local table = require"table"
 local sys = require"sys"
 local ril = require"ril"
 local net = require"net"
 local pm = require"pm"
-local dbg = require"dbg"
-local table = require "table"
---local aud = require"audio"
-
-module("cc")
+module(...)
 
 --加载常用的全局函数至本地
-local ipairs,pairs,print,unpack,type,dispatch,req = base.ipairs,base.pairs,base.print,base.unpack,base.type,sys.dispatch,ril.request
+local ipairs,pairs,print,unpack,type = base.ipairs,base.pairs,base.print,base.unpack,base.type
+local req = ril.request
 
 --底层通话模块是否准备就绪，true就绪，false或者nil未就绪
 local ccready = true
@@ -32,6 +30,13 @@ local clcc,clccold,disc,chupflag = {},{},{},0
 --状态变化通知回调
 local usercbs = {}
 
+
+--[[
+函数名：print
+功能  ：打印接口，此文件中的所有打印都会加上cc前缀
+参数  ：无
+返回值：无
+]]
 local function print(...)
 	base.print("cc",...)
 end
@@ -321,72 +326,70 @@ end
 返回值：true为成功，false为失败
 ]]
 function transvoice(data,loop,loop2)
-  local f = io.open("/RecDir/rec000","wb")
+	local f = io.open("/RecDir/rec000","wb")
 
-  if f == nil then
-    print("transvoice:open file error")
-    return false
-  end
+	if f == nil then
+		print("transvoice:open file error")
+		return false
+	end
 
-  -- 有文件头并且是12.2K帧
-  if string.sub(data,1,7) == "#!AMR\010\060" then
-  -- 无文件头且是12.2K帧
-  elseif string.byte(data,1) == 0x3C then
-    f:write("#!AMR\010")
-  else
-    print("transvoice:must be 12.2K AMR")
-    return false
-  end
+	-- 有文件头并且是12.2K帧
+	if string.sub(data,1,7) == "#!AMR\010\060" then
+	-- 无文件头且是12.2K帧
+	elseif string.byte(data,1) == 0x3C then
+		f:write("#!AMR\010")
+	else
+		print("transvoice:must be 12.2K AMR")
+		return false
+	end
 
-  f:write(data)
-  f:close()
+	f:write(data)
+	f:close()
 
-  req(string.format("AT+AUDREC=%d,%d,2,0,50000",loop2 == true and 1 or 0,loop == true and 1 or 0))
+	req(string.format("AT+AUDREC=%d,%d,2,0,50000",loop2 == true and 1 or 0,loop == true and 1 or 0))
 
-  return true
+	return true
 end
 
 --[[
 函数名：dtmfdetect
 功能  ：设置dtmf检测是否使能以及灵敏度
 参数  ：
-    enable：true使能，false或者nil为不使能
-    sens：灵敏度，默认3，最灵敏为1
+		enable：true使能，false或者nil为不使能
+		sens：灵敏度，默认3，最灵敏为1
 返回值：无
 ]]
 function dtmfdetect(enable,sens)
-  if enable == true then
-    if not gsmfr then setGSMFR() end
+	if enable == true then
+		if sens then
+			req("AT+DTMFDET=2,1," .. sens)
+		else
+			req("AT+DTMFDET=2,1,3")
+		end
+	end
 
-    if sens then
-      req("AT+DTMFDET=2,1," .. sens)
-    else
-      req("AT+DTMFDET=2,1,3")
-    end
-  end
-
-  req("AT+DTMFDET="..(enable and 1 or 0))
+	req("AT+DTMFDET="..(enable and 1 or 0))
 end
 
 --[[
 函数名：senddtmf
 功能  ：发送dtmf到对端
 参数  ：
-    str：dtmf字符串
-    playtime：每个dtmf播放时间，单位毫秒，默认100
-    intvl：两个dtmf间隔，单位毫秒，默认100
+		str：dtmf字符串
+		playtime：每个dtmf播放时间，单位毫秒，默认100
+		intvl：两个dtmf间隔，单位毫秒，默认100
 返回值：无
 ]]
 function senddtmf(str,playtime,intvl)
-  if string.match(str,"([%dABCD%*#]+)") ~= str then
-    print("senddtmf: illegal string "..str)
-    return false
-  end
+	if string.match(str,"([%dABCD%*#]+)") ~= str then
+		print("senddtmf: illegal string "..str)
+		return false
+	end
 
-  playtime = playtime and playtime or 100
-  intvl = intvl and intvl or 100
+	playtime = playtime and playtime or 100
+	intvl = intvl and intvl or 100
 
-  req("AT+SENDSOUND="..string.format("\"%s\",%d,%d",str,playtime,intvl))
+	req("AT+SENDSOUND="..string.format("\"%s\",%d,%d",str,playtime,intvl))
 end
 
 local dtmfnum = {[71] = "Hz1000",[69] = "Hz1400",[70] = "Hz2300"}
@@ -395,22 +398,22 @@ local dtmfnum = {[71] = "Hz1000",[69] = "Hz1400",[70] = "Hz2300"}
 函数名：parsedtmfnum
 功能  ：dtmf解码，解码后，会产生一个内部消息AUDIO_DTMF_DETECT，携带解码后的DTMF字符
 参数  ：
-    data：dtmf字符串数据
+		data：dtmf字符串数据
 返回值：无
 ]]
 local function parsedtmfnum(data)
-  local n = base.tonumber(string.match(data,"(%d+)"))
-  local dtmf
+	local n = base.tonumber(string.match(data,"(%d+)"))
+	local dtmf
 
-  if (n >= 48 and n <= 57) or (n >=65 and n <= 68) or n == 42 or n == 35 then
-    dtmf = string.char(n)
-  else
-    dtmf = dtmfnum[n]
-  end
+	if (n >= 48 and n <= 57) or (n >=65 and n <= 68) or n == 42 or n == 35 then
+		dtmf = string.char(n)
+	else
+		dtmf = dtmfnum[n]
+	end
 
-  if dtmf then
-    dispatch("AUDIO_DTMF_DETECT",dtmf)
-  end
+	if dtmf then
+		dispatch("CALL_DTMF",dtmf)
+	end
 end
 
 --[[
@@ -422,15 +425,14 @@ end
 返回值：无
 ]]
 local function ccurc(data,prefix)
-    print("ljdcc ccurc:", prefix,data)
 	--底层通话模块准备就绪
 	if data == "CALL READY" then
 		ccready = true
 		dispatch("CALL_READY")
 	--通话建立通知
 	elseif data == "CONNECT" then
-		qrylist()
-		--dispatch("CALL_CONNECTED")
+		qrylist()		
+		dispatch("CALL_CONNECTED")
 	--通话挂断通知
 	elseif data == "NO CARRIER" or data == "BUSY" or data == "NO ANSWER" then
 	    print("ljdcc ",data,chupflag,#clccold,#clcc)
@@ -485,6 +487,8 @@ local function ccrsp(cmd,success,response,intermediate)
 	if prefix == "D" then
 		if not success then
 			discevt("CALL_FAILED")
+		else
+			if usercbs["ALERTING"] then sys.timer_loop_start(qrylist,1000,"MO") end
 		end
 	--挂断所有通话应答
 	elseif prefix == "+CHUP" then
@@ -521,3 +525,4 @@ ril.regrsp("+CHLD",ccrsp)
 req("ATX4")
 --开启来电urc上报
 req("AT+CLIP=1")
+dtmfdetect(true)

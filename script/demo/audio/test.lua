@@ -7,8 +7,7 @@ require"common"
 --PWRON：开机铃声
 --CALL：来电铃声
 --SMS：新短信铃声
---TTS：TTS播放
-PWRON,CALL,SMS,TTS = 3,2,1,0
+PWRON,CALL,SMS = 2,1,0
 
 local function testcb(r)
 	print("testcb",r)
@@ -35,8 +34,7 @@ local function testplayconflict()
 		--循环播放来电铃声
 		audio.play(CALL,"FILE","/ldata/call.mp3",audiocore.VOL7,nil,true)
 		--5秒钟后，循环播放开机铃声
-		sys.timer_start(audio.play,5000,PWRON,"FILE","/ldata/pwron.mp3",audiocore.VOL7,nil,true)
-		
+		sys.timer_start(audio.play,5000,PWRON,"FILE","/ldata/pwron.mp3",audiocore.VOL7,nil,true)		
 	end
 
 	
@@ -48,10 +46,10 @@ local function testplayconflict()
 		sys.timer_start(audio.play,5000,SMS,"FILE","/ldata/sms.mp3",audiocore.VOL7,nil,true)
 		
 	end
-	]]
+	]]	
 end
 
 
 --每次打开下面的一行代码进行测试
-sys.timer_start(testplayfile,5000)
---sys.timer_start(testplayconflict,5000)
+--sys.timer_start(testplayfile,5000)
+sys.timer_start(testplayconflict,5000)

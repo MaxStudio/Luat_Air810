@@ -36,17 +36,6 @@ local playname
 local regrcd,recording
 
 --[[
-函数名：setGSMFR
-功能  ：设置GSM全速率（目前功能无效）
-参数  ：无		
-返回值：无
-]]
-function setGSMFR()
-	gsmfr = true
-	req([[AT+SCFG="Call/SpeechVersion1",2]])
-end
-
---[[
 函数名：beginrecord
 功能  ：开始录音
 参数  ：
@@ -116,10 +105,9 @@ end
 		dl：模块下行（耳机或手柄或喇叭）是否可以听到录音播放的声音，true可以听到，false或者nil听不到
 		loop：是否循环播放，true为循环，false或者nil为不循环
 		id：录音id，会根据这个id存储录音文件，取值范围0-4
-		duration：录音时长，单位毫秒
 返回值：true
 ]]
-function playrecord(dl,loop,id,duration)
+function playrecord(dl,loop,id)
 	play((type(id)=="number" and ("/rcd"..id..".amr") or id),loop)
 	return true
 end
@@ -128,28 +116,12 @@ end
 函数名：stoprecord
 功能  ：停止播放录音文件
 参数  ：
-		dl：模块下行（耳机或手柄或喇叭）是否可以听到录音播放的声音，true可以听到，false或者nil听不到
-		loop：是否循环播放，true为循环，false或者nil为不循环
-		id：录音id，会根据这个id存储录音文件，取值范围0-4
-		duration：录音时长，单位毫秒
 返回值：true
 ]]
-function stoprecord(dl,loop,id,duration)
+function stoprecord()
 	stop()
 	return true
 end
-
---[[
-function playamfgp(namepath,typ)
-	req(string.format("AT+AMFGP=1,\"".. namepath .. "\"," .. (typ and typ or 1)))
-	return true
-end
-
-function stopamfgp(namepath,typ)
-	req(string.format("AT+AMFGP=0,\"".. namepath .. "\"," .. (typ and typ or 1)))
-	return true
-end
-]]
 
 --[[
 函数名：_play
@@ -184,10 +156,6 @@ end
 返回值：无
 ]]
 local function audiourc(data,prefix)
-	--DTMF接收检测
-	if prefix == "+DTMFDET" then
-		parsedtmfnum(data)	
-	end
 end
 
 --[[
@@ -201,15 +169,10 @@ end
 返回值：无
 ]]
 local function audiorsp(cmd,success,response,intermediate)
-	local prefix = smatch(cmd,"AT(%+%u+%?*)")
-
-  print("audiorsp prefix=",prefix)
 end
 
 --注册以下通知的处理函数
-ril.regurc("+DTMFDET",audiourc)
 ril.regurc("+AUDREC",audiourc)
---ril.regurc("+AMFGP",audiourc)
 --注册以下AT命令的应答处理函数
 ril.regrsp("+AUDREC",audiorsp,0)
 
@@ -223,7 +186,6 @@ ril.regrsp("+AUDREC",audiorsp,0)
 function setspeakervol(vol)
 	audio.setvol(vol)
 	speakervol = vol
-	dispatch("SPEAKER_VOLUME_SET_CNF",true)
 end
 
 --[[
@@ -236,7 +198,6 @@ end
 function setcallvol(vol)
   print("setcallvol",vol)
   audio.setsphvol(vol)
-  dispatch("CALL_VOLUME_SET_CNF",true)
 end
 
 --[[
@@ -259,7 +220,6 @@ end
 function setaudiochannel(channel)
 	audio.setchannel(channel)
 	audiochannel = channel
-	dispatch("AUDIO_CHANNEL_SET_CNF",true)
 end
 
 --[[
@@ -296,7 +256,6 @@ end
 function setmicrophonegain(vol)
 	audio.setmicvol(vol)
 	microphonevol = vol
-	dispatch("MICROPHONE_GAIN_SET_CNF",true)
 end
 
 --[[
@@ -318,14 +277,13 @@ end
 返回值：无
 ]]
 local function audiomsg(msg)
-  if msg.play_end_ind == true then
-    -- 循环播放时不派发该消息
-    if playname then audio.play(playname) return end
-    playend()
-  elseif msg.play_error_ind == true then
-    if playname then playname = nil end
-    playerr()
-  end
+	if msg.play_end_ind == true then
+		if playname then audio.play(playname) return end
+		playend()
+	elseif msg.play_error_ind == true then
+		if playname then playname = nil end
+		playerr()
+	end
 end
 
 --[[
@@ -392,7 +350,8 @@ local function playbegin(priority,typ,path,vol,cb,dup,duprd)
     end
 	
 	--调用播放接口成功
-	if _play(path,dup and (not duprd or duprd==0)) then
+	if ((typ=="RECORD" and playrecord(true,false,tonumber(path)))
+		or (typ=="FILE" and _play(path,dup and (not duprd or duprd==0)))) then
 		return true
 	--调用播放接口失败
 	else
@@ -408,7 +367,7 @@ end
 		typ：string类型，必选参数，音频类型，目前仅支持"FILE"、"RECORD"
 		path：必选参数，音频文件路径，跟typ有关：
 		    typ为"FILE"时：string类型，表示音频文件路径
-			  typ为"RECORD"时：number类型，表示录音ID
+			typ为"RECORD"时：number类型，表示录音ID
 		vol：number类型，可选参数，播放音量，取值范围audiocore.VOL0到audiocore.VOL7
 		cb：function类型，可选参数，音频播放结束或者出错时的回调函数，回调时包含一个参数：0表示播放成功结束；1表示播放出错；2表示播放优先级不够，没有播放
 		dup：bool类型，可选参数，是否循环播放，true循环，false或者nil不循环
@@ -453,12 +412,13 @@ end
 ]]
 function stop()
 	if styp then
-		local typ = styp
+		local typ,path = styp,spath		
 		spriority,styp,spath,svol,scb,sdup,sduprd,spending = nil
 		--停止循环播放定时器
 		sys.timer_stop_all(play)
 		--停止音频播放
 		_stop()
+		if typ=="RECORD" then stoprecord() return end
 	end
 	return true
 end
@@ -471,6 +431,7 @@ end
 ]]
 function playend()
 	print("playend",sdup,sduprd)
+	if styp=="RECORD" and not sdup then stoprecord() end
 	--需要重复播放
 	if sdup then
 		--存在重复播放间隔
@@ -493,6 +454,7 @@ end
 ]]
 function playerr()
 	print("playerr")
+	if styp=="RECORD" then stoprecord() end
 	--如果正在播放的音频有回调函数，则执行回调，传入参数1
 	if scb then scb(1) end
 	spriority,styp,spath,svol,scb,sdup,sduprd,spending = nil
@@ -507,7 +469,7 @@ local stopreqcb
 返回值：无
 ]]
 local function audstopreq(cb)
-	if stop() then cb() return end
+	if stop() and cb then cb() return end
 	stopreqcb = cb
 end
 

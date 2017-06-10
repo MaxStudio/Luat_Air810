@@ -1,4 +1,3 @@
-module(...,package.seeall)
 --[[
 模块名称：mqtt协议管理
 模块功能：实现协议的组包和解包，请首先阅读http://public.dhe.ibm.com/software/dw/webservices/ws-mqtt/mqtt-v3r1.html了解mqtt协议
@@ -7,8 +6,9 @@ module(...,package.seeall)
 
 --[[
 目前只支持QoS=0和QoS=1，不支持QoS=2
-topic、client identifier、user、password只支持ASCII字符串
 ]]
+
+module(...,package.seeall)
 
 local lpack = require"pack"
 require"common"
@@ -19,7 +19,7 @@ local slen,sbyte,ssub,sgsub,schar,srep,smatch,sgmatch = string.len,string.byte,s
 --报文类型
 CONNECT,CONNACK,PUBLISH,PUBACK,PUBREC,PUBREL,PUBCOMP,SUBSCRIBE,SUBACK,UNSUBSCRIBE,UNSUBACK,PINGREQ,PINGRSP,DISCONNECT = 1,2,3,4,5,6,7,8,9,10,11,12,13,14
 
-local PRONAME,PROVER,CLEANSESS = "MQIsdp",3,1
+local CLEANSESS = 1
 
 --报文序列号
 local seq = 1
@@ -30,7 +30,8 @@ end
 
 local function encutf8(s)
 	if not s then return "" end
-	return lpack.pack(">HA",slen(s),s)
+	local utf8s = common.gb2312toutf8(s)
+	return lpack.pack(">HA",slen(utf8s),utf8s)
 end
 
 local function enclen(s)
@@ -87,14 +88,26 @@ end
 函数名：pack
 功能  ：MQTT组包
 参数  ：
+		mqttver：mqtt协议版本号
 		typ：报文类型
 		...：可变参数
 返回值：第一个返回值是报文数据，第二个返回值是每种报文自定义的参数
 ]]
-local function pack(typ,...)
+local function pack(mqttver,typ,...)
 	local para = {}
-	local function connect(alive,id,user,pwd)
-		return lpack.pack(">bAbbHAAA",CONNECT*16,encutf8(PRONAME),PROVER,(user and 1 or 0)*128+(pwd and 1 or 0)*64+CLEANSESS*2,alive,encutf8(id),encutf8(user),encutf8(pwd))
+	local function connect(alive,id,twill,user,pwd)
+		local ret = lpack.pack(">bAbbHA",
+						CONNECT*16,
+						encutf8(mqttver=="3.1.1" and "MQTT" or "MQIsdp"),
+						mqttver=="3.1.1" and 4 or 3,
+						(user and 1 or 0)*128+(pwd and 1 or 0)*64+twill.retain*32+twill.qos*8+twill.flg*4+CLEANSESS*2,
+						alive,
+						encutf8(id))
+		if twill.flg==1 then
+			ret = ret..encutf8(twill.topic)..encutf8(twill.payload)
+		end
+		ret = ret..encutf8(user)..encutf8(pwd)
+		return ret
 	end
 	
 	local function subscribe(p)
@@ -166,10 +179,11 @@ local rcvpacket = {}
 函数名：unpack
 功能  ：MQTT解包
 参数  ：
+		mqttver：mqtt协议版本号
 		s：一条完整的报文
 返回值：如果解包成功，返回一个table类型数据，数据元素由报文类型决定；如果解包失败，返回nil
 ]]
-local function unpack(s)
+local function unpack(mqttver,s)
 	rcvpacket = {}
 
 	local function connack(d)
@@ -194,12 +208,11 @@ local function unpack(s)
 	end
 	
 	local function publish(d)
-    --数据量太大时不能打开，内存不足
-    --print("publish",common.binstohexs(d))
+		print("publish",common.binstohexs(d)) --数据量太大时不能打开，内存不足
 		if slen(d) < 4 then return end
 		local _,tplen = lpack.unpack(ssub(d,1,2),">H")		
 		local pay = (rcvpacket.qos > 0 and 5 or 3)
-		if slen(d) < tplen + pay then return end
+		if slen(d) < tplen+pay-1 then return end
 		rcvpacket.topic = ssub(d,3,2+tplen)
 		
 		if rcvpacket.qos > 0 then
@@ -231,6 +244,7 @@ local function unpack(s)
 	print("unpack",typ,rcvpacket.qos,(slen(s) > 200) and "" or common.binstohexs(s))
 	return procer[typ](ssub(s,slen(s)-len+1,-1)) and rcvpacket or nil
 end
+
 
 --一个连接周期内的动作：如果连接后台失败，会尝试重连，重连间隔为RECONN_PERIOD秒，最多重连RECONN_MAX_CNT次
 --如果一个连接周期内都没有连接成功，则等待RECONN_CYCLE_PERIOD秒后，重新发起一个连接周期
@@ -277,7 +291,19 @@ end
 ]]
 function mqttconndata(sckidx)
 	local mqttclientidx = getclient(sckidx)
-	return pack(CONNECT,tclients[mqttclientidx].keepalive,tclients[mqttclientidx].clientid,tclients[mqttclientidx].user,tclients[mqttclientidx].password)
+	return pack(tclients[mqttclientidx].mqttver,
+				CONNECT,
+				tclients[mqttclientidx].keepalive,
+				tclients[mqttclientidx].clientid,
+				{
+					flg=tclients[mqttclientidx].willflg or 0,
+					qos=tclients[mqttclientidx].willqos or 0,
+					retain=tclients[mqttclientidx].willretain or 0,
+					topic=tclients[mqttclientidx].willtopic or "",
+					payload=tclients[mqttclientidx].willpayload or "",
+				},
+				tclients[mqttclientidx].user,
+				tclients[mqttclientidx].password)
 end
 
 --[[
@@ -292,7 +318,7 @@ end
 local function mqttsubcb(sckidx,result,tpara)	
 	--重新封装MQTT SUBSCRIBE报文，重复标志设为true，序列号和topic都是用原始值，数据保存起来，如果超时DUP_TIME秒中没有收到SUBACK，则会自动重发SUBSCRIBE报文
 	--重发的触发开关在mqttdup.lua中
-	mqttdup.ins(sckidx,tpara.key,pack(SUBSCRIBE,tpara.val),tpara.val.seq,tpara.ackcb,tpara.usertag)
+	mqttdup.ins(sckidx,tpara.key,pack(tclients[getclient(sckidx)].mqttver,SUBSCRIBE,tpara.val),tpara.val.seq,tpara.ackcb,tpara.usertag)
 end
 
 --[[
@@ -310,7 +336,7 @@ local function mqttpubcb(sckidx,result,tpara)
 	elseif tpara.qos==1 then
 		--重新封装MQTT PUBLISH报文，重复标志设为true，序列号、topic、payload都是用原始值，数据保存起来，如果超时DUP_TIME秒中没有收到PUBACK，则会自动重发PUBLISH报文
 		--重发的触发开关在mqttdup.lua中
-		mqttdup.ins(sckidx,tpara.key,pack(PUBLISH,tpara.val),tpara.val.seq,tpara.ackcb,tpara.usertag)
+		mqttdup.ins(sckidx,tpara.key,pack(tclients[getclient(sckidx)].mqttver,PUBLISH,tpara.val),tpara.val.seq,tpara.ackcb,tpara.usertag)
 	end	
 end
 
@@ -320,21 +346,24 @@ end
 参数  ：		
 		sckidx：socket idx
 		result： bool类型，发送结果，true为成功，其他为失败
+		tpara：table类型，{key="MQTTDISC", val=data, usertag=usrtag}
 返回值：无
 ]]
-function mqttdiscb(sckidx,result)
+function mqttdiscb(sckidx,result,tpara)
 	--关闭socket连接
-	socket.disconnect(sckidx)
+	tclients[getclient(sckidx)].discing = true
+	socket.disconnect(sckidx,tpara.usertag)
 end
 
 --[[
 函数名：mqttdiscdata
 功能  ：组包MQTT DISCONNECT报文数据
-参数  ：无		
+参数  ：
+		sckidx：socket idx
 返回值：DISCONNECT报文数据和报文参数
 ]]
-function mqttdiscdata()
-	return pack(DISCONNECT)
+function mqttdiscdata(sckidx)
+	return pack(tclients[getclient(sckidx)].mqttver,DISCONNECT)
 end
 
 --[[
@@ -342,20 +371,22 @@ end
 功能  ：发送MQTT DISCONNECT报文
 参数  ：
 		sckidx：socket idx
-返回值：无
+		usrtag：用户自定义标记
+返回值：true表示发起了动作，nil表示没有发起
 ]]
-local function disconnect(sckidx)
-	mqttsnd(sckidx,"MQTTDISC")
+local function disconnect(sckidx,usrtag)
+	return mqttsnd(sckidx,"MQTTDISC",usrtag)
 end
 
 --[[
 函数名：mqttpingreqdata
 功能  ：组包MQTT PINGREQ报文数据
-参数  ：无		
+参数  ：
+		sckidx：socket idx
 返回值：PINGREQ报文数据和报文参数
 ]]
-function mqttpingreqdata()
-	return pack(PINGREQ)
+function mqttpingreqdata(sckidx)
+	return pack(tclients[getclient(sckidx)].mqttver,PINGREQ)
 end
 
 --[[
@@ -407,9 +438,10 @@ end
 参数  ：
 		sckidx：socket idx
         typ：报文类型
-返回值：无
+		usrtag：用户自定义标记
+返回值：true表示发起了动作，nil表示没有发起
 ]]
-function mqttsnd(sckidx,typ)
+function mqttsnd(sckidx,typ,usrtag)
 	if not tmqttpack[typ] then print("mqttsnd typ error",typ) return end
 	local mqttyp = tmqttpack[typ].mqttyp
 	local dat,para = tmqttpack[typ].mqttdatafnc(sckidx)
@@ -423,9 +455,11 @@ function mqttsnd(sckidx,typ)
 		snd(sckidx,dat,{key=tmqttpack[typ].sndpara})
 	elseif mqttyp==DISCONNECT then
 		if not snd(sckidx,dat,{key=tmqttpack[typ].sndpara}) and tmqttpack[typ].sndcb then
-			tmqttpack[typ].sndcb(sckidx,false,{key=tmqttpack[typ].sndpara})
+			tmqttpack[typ].sndcb(sckidx,false,{key=tmqttpack[typ].sndpara,usertag=usrtag})
 		end		
 	end	
+	
+	return true
 end
 
 --[[
@@ -455,9 +489,16 @@ local function reconn(sckidx)
 	else
 		tclients[mqttclientidx].sckreconncnt,tclients[mqttclientidx].sckreconncyclecnt = 0,tclients[mqttclientidx].sckreconncyclecnt+1
 		if tclients[mqttclientidx].sckreconncyclecnt >= RECONN_CYCLE_MAX_CNT then
-			sys.restart("connect fail")
-		end
-		sys.timer_start(reconn,RECONN_CYCLE_PERIOD*1000,sckidx)
+			if tclients[mqttclientidx].sckerrcb then
+				tclients[mqttclientidx].sckreconncnt=0
+				tclients[mqttclientidx].sckreconncyclecnt=0
+				tclients[mqttclientidx].sckerrcb("CONNECT")
+			else
+				sys.restart("connect fail")
+			end
+		else
+			sys.timer_start(reconn,RECONN_CYCLE_PERIOD*1000,sckidx)
+		end		
 	end
 end
 
@@ -465,10 +506,10 @@ end
 函数名：ntfy
 功能  ：socket状态的处理函数
 参数  ：
-        idx：number类型，socket中维护的socket idx，跟调用socket.sckconn时传入的第一个参数相同，程序可以忽略不处理
+        idx：number类型，socket中维护的socket idx，跟调用socket.connect时传入的第一个参数相同，程序可以忽略不处理
         evt：string类型，消息事件类型
 		result： bool类型，消息事件结果，true为成功，其他为失败
-		item：table类型，{data=,para=}，消息回传的参数和数据，目前只是在SEND类型的事件中用到了此参数，例如调用socket.scksnd时传入的第2个和第3个参数分别为dat和par，则item={data=dat,para=par}
+		item：table类型，{data=,para=}，消息回传的参数和数据，目前只是在SEND类型的事件中用到了此参数，例如调用socket.send时传入的第2个和第3个参数分别为dat和par，则item={data=dat,para=par}
 返回值：无
 ]]
 function ntfy(idx,evt,result,item)
@@ -507,25 +548,26 @@ function ntfy(idx,evt,result,item)
 				else
 					local id = getidbysndpara(item.para.key)
 					print("item.para",type(item.para) == "table",type(item.para) == "table" and item.para.typ or item.para,id)
-					if id and tmqttpack[id].sndcb then tmqttpack[id].sndcb(idx,result,item.para.val) end
+					if id and tmqttpack[id].sndcb then tmqttpack[id].sndcb(idx,result,item.para) end
 				end
 			end
 		end
 	--连接被动断开
 	elseif evt == "STATE" and result == "CLOSED" then
 		sys.timer_stop(pingreq,idx)
-		--sys.timer_stop(loc0snd)
-		--sys.timer_stop(loc1snd)
 		mqttdup.rmvall(idx)
 		tclients[mqttclientidx].sckconnected=false
 		tclients[mqttclientidx].mqttconnected=false
 		tclients[mqttclientidx].sckrcvs=""
-		reconn(idx)
+		if tclients[mqttclientidx].discing then
+			if tclients[mqttclientidx].discb then tclients[mqttclientidx].discb() end
+			tclients[mqttclientidx].discing = false
+		else
+			reconn(idx)
+		end
 	--连接主动断开（调用link.shut后的异步事件）
 	elseif evt == "STATE" and result == "SHUTED" then
 		sys.timer_stop(pingreq,idx)
-		--sys.timer_stop(loc0snd)
-		--sys.timer_stop(loc1snd)
 		mqttdup.rmvall(idx)
 		tclients[mqttclientidx].sckconnected=false
 		tclients[mqttclientidx].mqttconnected=false
@@ -534,13 +576,23 @@ function ntfy(idx,evt,result,item)
 	--连接主动断开（调用socket.disconnect后的异步事件）
 	elseif evt == "DISCONNECT" then
 		sys.timer_stop(pingreq,idx)
-		--sys.timer_stop(loc0snd)
-		--sys.timer_stop(loc1snd)
 		mqttdup.rmvall(idx)
 		tclients[mqttclientidx].sckconnected=false
 		tclients[mqttclientidx].mqttconnected=false
 		tclients[mqttclientidx].sckrcvs=""
-		reconn(idx)		
+		if item=="USER" then
+			if tclients[mqttclientidx].discb then tclients[mqttclientidx].discb() end
+			tclients[mqttclientidx].discing = false
+		else
+			reconn(idx)
+		end
+	--连接主动断开并且销毁（调用socket.close后的异步事件）
+	elseif evt == "CLOSE" then
+		sys.timer_stop(pingreq,idx)
+		mqttdup.rmvall(idx)
+		local cb = tclients[mqttclientidx].destroycb
+		table.remove(tclients,mqttclientidx)
+		if cb then cb() end
 	end
 	--其他错误处理，断开数据链路，重新连接
 	if smatch((type(result)=="string") and result or "","ERROR") then
@@ -611,9 +663,9 @@ end
 local function svrpublish(sckidx,mqttpacket)
 	local mqttclientidx = getclient(sckidx)
 	print("svrpublish",mqttpacket.topic,mqttpacket.seq,mqttpacket.payload)	
-	if mqttpacket.qos == 1 then snd(sckidx,pack(PUBACK,mqttpacket.seq)) end
+	if mqttpacket.qos == 1 then snd(sckidx,pack(tclients[mqttclientidx].mqttver,PUBACK,mqttpacket.seq)) end
 	if tclients[mqttclientidx].evtcbs then
-		if tclients[mqttclientidx].evtcbs["MESSAGE"] then tclients[mqttclientidx].evtcbs["MESSAGE"](mqttpacket.topic,mqttpacket.payload,mqttpacket.qos) end
+		if tclients[mqttclientidx].evtcbs["MESSAGE"] then tclients[mqttclientidx].evtcbs["MESSAGE"](common.utf8togb2312(mqttpacket.topic),mqttpacket.payload,mqttpacket.qos) end
 	end
 end
 
@@ -664,7 +716,7 @@ end
 函数名：rcv
 功能  ：socket接收数据的处理函数
 参数  ：
-        idx ：socket中维护的socket idx，跟调用socket.sckconn时传入的第一个参数相同，程序可以忽略不处理
+        idx ：socket中维护的socket idx，跟调用socket.connect时传入的第一个参数相同，程序可以忽略不处理
         data：接收到的数据
 返回值：无
 ]]
@@ -679,7 +731,7 @@ function rcv(idx,data)
 	while f do
 		data = ssub(tclients[mqttclientidx].sckrcvs,h,t)
 		tclients[mqttclientidx].sckrcvs = ssub(tclients[mqttclientidx].sckrcvs,t+1,-1)
-		local packet = unpack(data)
+		local packet = unpack(tclients[mqttclientidx].mqttver,data)
 		if packet and packet.typ and mqttcmds[packet.typ] then
 			mqttcmds[packet.typ](idx,packet)
 			if packet.typ ~= CONNACK and packet.typ ~= SUBACK then
@@ -771,10 +823,11 @@ tmqtt.__index = tmqtt
 		prot：string类型，传输层协议，仅支持"TCP"和"UDP"[必选]
 		host：string类型，服务器地址，支持域名和IP地址[必选]
 		port：number类型，服务器端口[必选]
+		ver：string类型，MQTT协议版本号，仅支持"3.1"和"3.1.1"，默认"3.1"
 返回值：无
 ]]
-function create(prot,host,port)
-	if #tclients>=3 then assert(false,"tclients maxcnt error") return end
+function create(prot,host,port,ver)
+	if #tclients>=2 then assert(false,"tclients maxcnt error") return end
 	local mqtt_client =
 	{
 		prot=prot,
@@ -787,6 +840,7 @@ function create(prot,host,port)
 		sckreconncyclecnt=0,
 		sckrcvs="",
 		mqttconnected=false,
+		mqttver = ver or "3.1",
 	}
 	setmetatable(mqtt_client,tmqtt)
 	table.insert(tclients,mqtt_client)
@@ -794,18 +848,80 @@ function create(prot,host,port)
 end
 
 --[[
+函数名：change
+功能  ：改变一个mqtt client的socket参数
+参数  ：
+		prot：string类型，传输层协议，仅支持"TCP"和"UDP"[必选]
+		host：string类型，服务器地址，支持域名和IP地址[必选]
+		port：number类型，服务器端口[必选]
+返回值：无
+]]
+function tmqtt:change(prot,host,port)
+	self.prot,self.host,self.port=prot or self.prot,host or self.host,port or self.port
+end
+
+--[[
+函数名：destroy
+功能  ：销毁一个mqtt client
+参数  ：
+		destroycb：function类型，mqtt client销毁后的回调函数[可选]
+返回值：无
+]]
+function tmqtt:destroy(destroycb)
+	local k,v
+	self.destroycb = destroycb
+	for k,v in pairs(tclients) do
+		if v.sckidx==self.sckidx then
+			socket.close(v.sckidx)
+		end
+	end
+end
+
+--[[
+函数名：disconnect
+功能  ：断开一个mqtt client，并且断开socket
+参数  ：
+		discb：function类型，断开后的回调函数[可选]
+返回值：无
+]]
+function tmqtt:disconnect(discb)
+	self.discb = discb
+	if not disconnect(self.sckidx,"USER") and discb then discb() end
+end
+
+--[[
+函数名：configwill
+功能  ：配置遗嘱参数
+参数  ：
+		flg：number类型，遗嘱标志，仅支持0和1
+		qos：number类型，服务器端发布遗嘱消息的服务质量等级，仅支持0,1,2
+		retain：number类型，遗嘱保留标志，仅支持0和1
+		topic：string类型，服务器端发布遗嘱消息的主题，gb2312编码	
+		payload：string类型，服务器端发布遗嘱消息的载荷，gb2312编码
+返回值：无
+]]
+function tmqtt:configwill(flg,qos,retain,topic,payload)
+	self.willflg=flg or 0
+	self.willqos=qos or 0
+	self.willretain=retain or 0
+	self.willtopic=topic or ""
+	self.willpayload=payload or ""
+end
+
+--[[
 函数名：connect
 功能  ：连接mqtt服务器
 参数  ：
-		clientid：string类型，client identifier，仅支持ascii字符[必选]
+		clientid：string类型，client identifier，gb2312编码[必选]
 		keepalive：number类型，保活时间，单位秒[可选，默认600]
-		user：string类型，用户名，仅支持ascii字符[可选，默认""]
-		password：string类型，密码，仅支持ascii字符[可选，默认""]		
-		connectedcb：function类型，连接成功的回调函数[可选]
-		connecterrcb：function类型，连接失败的回调函数[可选]
+		user：string类型，用户名，gb2312编码[可选，默认""]
+		password：string类型，密码，gb2312编码[可选，默认""]		
+		connectedcb：function类型，mqtt连接成功的回调函数[可选]
+		connecterrcb：function类型，mqtt连接失败的回调函数[可选]
+		sckerrcb：function类型，socket连接失败的回调函数[可选]
 返回值：无
 ]]
-function tmqtt:connect(clientid,keepalive,user,password,connectedcb,connecterrcb)
+function tmqtt:connect(clientid,keepalive,user,password,connectedcb,connecterrcb,sckerrcb)
 	self.clientid=clientid
 	self.keepalive=keepalive or 600
 	self.user=user or ""
@@ -814,6 +930,7 @@ function tmqtt:connect(clientid,keepalive,user,password,connectedcb,connecterrcb
 	--self.autoreconnect=autoreconnect
 	self.connectedcb=connectedcb
 	self.connecterrcb=connecterrcb
+	self.sckerrcb=sckerrcb
 	
 	tclients[getclient(self.sckidx)]=self
 	
@@ -832,8 +949,8 @@ end
 函数名：publish
 功能  ：发布一条消息
 参数  ：
-		topic：string类型，消息主题，仅支持ascii字符[必选]
-		payload：二进制数据，消息负载[必选]
+		topic：string类型，消息主题，gb2312编码[必选]
+		payload：二进制数据，消息负载，用户自定义编码，本文件不会对数据做任何编码转换处理[必选]
 		qos：number类型，服务质量等级，仅支持0和1[可选，默认0]		
 		ackcb：function类型，qos为1时表示收到PUBACK的回调函数,qos为0时消息发送结果的回调函数[可选]
 		usertag：string类型，用户回调函数ackcb用到的第一个参数[可选]
@@ -850,7 +967,7 @@ function tmqtt:publish(topic,payload,qos,ackcb,usertag)
 	--仅支持qos 0和1
 	if qos and qos~=0 and qos~=1 then assert(false,"tmqtt:publish not support qos 2") return end
 	--打包publish报文
-	local dat,para = pack(PUBLISH,{qos=qos or 0,topic=topic,payload=payload})
+	local dat,para = pack(self.mqttver,PUBLISH,{qos=qos or 0,topic=topic,payload=payload})
 	
 	--发送
 	local tpara = {key="MQTTPUB", val=para, qos=qos or 0, usertag=usertag, ackcb=ackcb}
@@ -863,7 +980,7 @@ end
 函数名：subscribe
 功能  ：订阅主题
 参数  ：
-		topics：table类型，一个或者多个主题，主题名仅支持ascii字符，质量等级仅支持0和1，{{topic="/topic1",qos=质量等级}, {topic="/topic2",qos=质量等级}, ...}[必选]
+		topics：table类型，一个或者多个主题，主题名gb2312编码，质量等级仅支持0和1，{{topic="/topic1",qos=质量等级}, {topic="/topic2",qos=质量等级}, ...}[必选]
 		ackcb：function类型，表示收到SUBACK的回调函数[可选]
 		usertag：string类型，用户回调函数ackcb用到的第一个参数[可选]
 返回值：无
@@ -882,7 +999,7 @@ function tmqtt:subscribe(topics,ackcb,usertag)
 	end
 
 	--打包subscribe报文
-	local dat,para = pack(SUBSCRIBE,{topic=topics})
+	local dat,para = pack(self.mqttver,SUBSCRIBE,{topic=topics})
 	
 	--发送
 	local tpara = {key="MQTTSUB", val=para, usertag=usertag, ackcb=ackcb}
@@ -892,7 +1009,7 @@ function tmqtt:subscribe(topics,ackcb,usertag)
 end
 
 --[[
-函数名：subscribe
+函数名：regevtcb
 功能  ：注册事件的回调函数
 参数  ：
 		evtcbs：一对或者多对evt和cb，格式为{evt=cb,...}}，evt取值如下：
@@ -903,3 +1020,22 @@ function tmqtt:regevtcb(evtcbs)
 	self.evtcbs=evtcbs	
 end
 
+--[[
+函数名：getstatus
+功能  ：获取MQTT CLIENT的状态
+参数  ：无
+返回值：MQTT CLIENT的状态，string类型，共4种状态：
+		DISCONNECTED：未连接状态
+		CONNECTING：连接中状态
+		CONNECTED：连接状态
+		DISCONNECTING：断开连接中状态
+]]
+function tmqtt:getstatus()
+	if self.mqttconnected then
+		return self.discing and "DISCONNECTING" or "CONNECTED"
+	elseif self.sckconnected or self.sckconning then
+		return "CONNECTING"
+	else
+		return "DISCONNECTED"
+	end
+end

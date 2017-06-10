@@ -8,26 +8,33 @@
 local string = require"string"
 local ril = require"ril"
 local sys = require"sys"
-local pmd = require"pmd"
 local base = _G
 local os = require"os"
 local io = require"io"
+local rtos = require"rtos"
+local pmd = require"pmd"
 module(...)
 
 --加载常用的全局函数至本地
 local tonumber,tostring,print,req,smatch = base.tonumber,base.tostring,base.print,ril.request,string.match
 
---[[
-sn: 序列号
-snrdy: 是否已经成功读取过序列号
-ver: 底层软件版本号
-blver: 引导软件版本号
-imei: IMEI
-]]
-local sn,snrdy,ver,blver,imei
+--sn：序列号
+--snrdy：是否已经成功读取过序列号
+--imei：IMEI
+--imeirdy：是否已经成功读取过IMEI
+--ver：底层软件版本号
+--clkswitch：整分时钟通知开关
+--updating：是否正在执行远程升级功能(update.lua)
+--dbging：是否正在执行dbg功能(dbg.lua)
+--ntping：是否正在执行NTP时间同步功能(ntp.lua)
+--flypending：是否有等待处理的进入飞行模式请求
+local sn,snrdy,imeirdy,--[[ver,]]imei,clkswitch,updating,dbging,ntping,flypending
 
-local CCLK_QUERY_TIMER_PERIOD = 60*1000
-local clk,calib,cbfunc,audflg={},false
+--calib：校准标志，true为已校准，其余未校准
+--setclkcb：执行AT+CCLK命令，应答后的用户自定义回调函数
+--wimeicb：执行AT+WIMEI命令，应答后的用户自定义回调函数
+--wsncb：执行AT+WISN命令，应答后的用户自定义回调函数
+local calib,setclkcb,wimeicb,wsncb,audflg
 
 --[[
 函数名：rsp
@@ -44,28 +51,39 @@ local function rsp(cmd,success,response,intermediate)
 	--查询序列号
 	if cmd == "AT+WISN?" then
 		if intermediate then sn = smatch(intermediate,"+WISN:%s*(.+)") end
+		--如果没有成功读取过序列号，则产生一个内部消息SN_READY，表示已经读取到序列号
 		if not snrdy then sys.dispatch("SN_READY") snrdy = true end
 	--查询底层软件版本号
-	elseif cmd == "AT+VER" then
-		if intermediate then
-			ver = smatch(intermediate,"+VER:%s*(.+)")
-			sys.dispatch("BASE_VER_IND",smatch(ver,"(_V%d+)"))
-		end
-	elseif cmd == "AT+BLVER" then
-		if intermediate then
-			blver = smatch(intermediate,"+BLVER:%s*(.+)")
-			sys.dispatch("BL_VER_IND",blver)
-		end
+	--[[elseif cmd == "AT+VER" then
+		ver = intermediate]]
+	--查询IMEI
 	elseif cmd == "AT+CGSN" then
 		imei = intermediate
-		sys.dispatch("IMEI_READY")
+		--如果没有成功读取过IMEI，则产生一个内部消息IMEI_READY，表示已经读取到IMEI
+		if not imeirdy then sys.dispatch("IMEI_READY") imeirdy = true end
+	--写IMEI
 	elseif smatch(cmd,"AT%+EGMR=") then
-		if smatch(cmd,"AT%+EGMR=%d,(%d)")=="7" then return end
+		if smatch(cmd,"AT%+EGMR=%d,(%d)")=="7" then
+			if wimeicb then
+				wimeicb(success)
+			else
+				if success then sys.restart("write imei") end
+			end
+		end
 	elseif smatch(cmd,"AT%+CSDS=") then
 	elseif smatch(cmd,"AT%+WISN=") then
+		if wsncb then
+			wsncb(success)
+		else
+			if success then sys.restart("write sn") end
+		end
 	--设置系统时间
 	elseif prefix == "+CCLK" then
 		startclktimer()
+		--AT命令应答处理结束，如果有回调函数
+		if setclkcb then
+			setclkcb(cmd,success,response,intermediate)
+		end
 	--查询是否校准
 	elseif cmd == "AT+ATWMFT=99" then
 		print('ATWMFT',intermediate)
@@ -74,16 +92,18 @@ local function rsp(cmd,success,response,intermediate)
 		else
 			calib = false
 		end
+	--进入或退出飞行模式
+	elseif smatch(cmd,"AT%+CFUN=[01]") then
+		--产生一个内部消息FLYMODE_IND，表示飞行模式状态发生变化
+		sys.dispatch("FLYMODE_IND",smatch(cmd,"AT%+CFUN=(%d)")=="0")
+
 	elseif cmd == "AT+AUD?" then
 		print('AT+AUD?',intermediate)
 		if intermediate then
 			audflg = smatch(intermediate,"+AUD=1")
 		end
 	end
-	if cbfunc then
-		cbfunc(cmd,success,response,intermediate)
-		cbfunc = nil
-	end
+	
 end
 
 --[[
@@ -99,7 +119,7 @@ function setclock(t,rspfunc)
 		if rspfunc then rspfunc() end
 		return
 	end
-	cbfunc = rspfunc
+	setclkcb = rspfunc
 	req(string.format("AT+CCLK=\"%02d/%02d/%02d,%02d:%02d:%02d\"",string.sub(t.year,3,4),t.month,t.day,t.hour,t.min,t.sec),nil,rsp)
 end
 
@@ -110,35 +130,9 @@ end
 返回值：系统时间字符串，格式为YYMMDDhhmmss，例如170214141602，17年2月14日14时16分02秒
 ]]
 function getclockstr()
-	clk = os.date("*t")
+	local clk = os.date("*t")
 	clk.year = string.sub(clk.year,3,4)
-	return string.format("%02d%02d%02d%02d%02d%02d",clk.year,clk.month,clk.day,clk.hour,clk.min,clk.sec)	
-end
-
-local function needupdatetime(newtime,precision)
-	if newtime and os.time(newtime) and os.date("*t") and os.time(os.date("*t")) then
-		local secdif = os.difftime(os.time(os.date("*t")),os.time(newtime))
-		if secdif and secdif >= precision or secdif <= (0-precision) then
-			print("needupdatetime",secdif)
-			return true
-		end
-	end
-	return false
-end
-
-
-function setclk(t,precision,rspfunc)
-	if t.year - 2000 > 38 then
-		if rspfunc then rspfunc() end
-		return
-	end
-	if needupdatetime(t,precision) then
-		setclock(t,rspfunc)
-	else
-		if rspfunc then rspfunc(nil,true) end
-	end
-	
-	sys.dispatch("SET_CLK_IND")
+	return string.format("%02d%02d%02d%02d%02d%02d",clk.year,clk.month,clk.day,clk.hour,clk.min,clk.sec)
 end
 
 --[[
@@ -148,7 +142,7 @@ end
 返回值：星期，number类型，1-7分别对应周一到周日
 ]]
 function getweek()
-	clk = os.date("*t")
+	local clk = os.date("*t")
 	return ((clk.wday == 1) and 7 or (clk.wday - 1))
 end
 
@@ -169,11 +163,14 @@ end
 返回值：无
 ]]
 function startclktimer()
-  if sys.getworkmode() == sys.FULL_MODE then
-    sys.dispatch("CLOCK_IND")
-    print('CLOCK_IND',os.date("*t").sec)
-    sys.timer_start(startclktimer,(60-os.date("*t").sec)*1000)
-  end
+	--开关开启 或者 工作模式为完整模式
+	if clkswitch or sys.getworkmode()==sys.FULL_MODE then
+		--产生一个内部消息CLOCK_IND，表示现在是整分，例如12点13分00秒、14点34分00秒
+		sys.dispatch("CLOCK_IND")
+		print('CLOCK_IND',os.date("*t").sec)
+		--启动下次通知的定时器
+		sys.timer_start(startclktimer,(60-os.date("*t").sec)*1000)
+	end
 end
 
 function chingeclktimer()
@@ -190,23 +187,6 @@ function getsn()
 	return sn or ""
 end
 
-function getbasever()
-	if ver and base._INTERNAL_VERSION then
-		local d1,d2,bver,bprj,lver
-		d1,d2,bver,bprj = string.find(ver,"_V(%d+)_(.+)")
-		d1,d2,lver = string.find(base._INTERNAL_VERSION,"_V(%d+)")
-
-		if bver ~= nil and bprj ~= nil and lver ~= nil then
-			return "SW_V" .. lver .. "_" .. bprj .. "_B" .. bver
-		end
-	end
-	return ""
-end
-
-function getblver()
-	return blver or ""
-end
-
 --[[
 函数名：isnvalid
 功能  ：判断sn是否有效
@@ -214,14 +194,20 @@ end
 返回值：有效返回true，否则返回false
 ]]
 function isnvalid()
-  local snstr,sninvalid = getsn(),""
-  local len,i = string.len(snstr)
-  for i=1,len do
-    sninvalid = sninvalid.."0"
-  end
-  return snstr~=sninvalid
+	local snstr,sninvalid = getsn(),""
+	local len,i = string.len(snstr)
+	for i=1,len do
+		sninvalid = sninvalid.."0"
+	end
+	return snstr~=sninvalid
 end
 
+--[[
+函数名：getimei
+功能  ：获取IMEI
+参数  ：无
+返回值：IMEI号，如果未获取到返回""
+]]
 function getimei()
 	return imei or ""
 end
@@ -229,51 +215,70 @@ end
 --[[
 函数名：setimei
 功能  ：设置IMEI
+		如果传入了cb，则设置IMEI后不会自动重启，用户必须自己保证设置成功后，调用sys.restart或者dbg.restart接口进行软重启;
+		如果没有传入cb，则设置成功后软件会自动重启
 参数  ：
-    s：新IMEI
+		s：新IMEI
+		cb：设置后的回调函数，调用时会将设置结果传出去，true表示设置成功，false或者nil表示失败；
 返回值：无
 ]]
-function setimei(s)
-  req("AT+EGMR=1,7,\""..s.."\"")
+function setimei(s,cb)
+	if s==imei then
+		if cb then cb(true) end
+	else
+		req("AT+EGMR=1,7,\""..s.."\"")
+		wimeicb = cb
+	end
 end
+
+
 
 --[[
 函数名：setsn
 功能  ：设置SN
+		如果传入了cb，则设置SN后不会自动重启，用户必须自己保证设置成功后，调用sys.restart或者dbg.restart接口进行软重启;
+		如果没有传入cb，则设置成功后软件会自动重启
 参数  ：
-    s：新SN
+		s：新SN
+		cb：设置后的回调函数，调用时会将设置结果传出去，true表示设置成功，false或者nil表示失败；
 返回值：无
 ]]
-function setsn(s)
-    req("AT+WISN=\""..s.."\"")
-end
-
-function setflymode(val)
-	req("AT+CFUN="..(val and 0 or 1))
-end
-
-function set(typ,val,cb)
-	cbfunc = cb
-	if  typ == "WISN" then
-		req("AT+" .. typ .. "=\"" .. val .. "\"")
-	elseif typ == "EGMR" then
-		req("AT+" .. typ .. "=" .. val)
-		if string.sub(val,1,1) == '1' then
-			req("AT+CSDS=1")
-		end
-		if string.sub(val,3,3)=="7" then
-			req("AT+CGSN")
-		end
-	elseif typ == "AMFAC" then
-		req("AT+" .. typ .. "=" .. val)
-	elseif typ == "CFUN" then
-		req("AT+" .. typ .. "=" .. val)
-	elseif typ == "CGSN" then
-		req("AT+CGSN")
-	elseif typ == "UARTSWITCH" then
-		req("AT+" .. typ .. "=" .. val)
+function setsn(s,cb)
+	if s==sn then
+		if cb then cb(true) end
+	else
+		req("AT+AMFAC="..(cb and "0" or "1"))
+		req("AT+WISN=\""..s.."\"")
+		wsncb = cb
 	end
 end
+
+
+--[[
+函数名：setflymode
+功能  ：控制飞行模式
+参数  ：
+		val：true为进入飞行模式，false为退出飞行模式
+返回值：无
+]]
+function setflymode(val)
+	--如果是进入飞行模式
+	if val then
+		--如果正在执行远程升级功能或者dbg功能或者ntp功能，则延迟进入飞行模式
+		if updating or dbging or ntping then flypending = true return end
+	end
+	--发送AT命令进入或者退出飞行模式
+	req("AT+CFUN="..(val and 0 or 1))
+	flypending = false
+end
+
+--[[
+函数名：set
+功能  ：兼容之前写的旧程序，目前为空函数
+参数  ：无
+返回值：无
+]]
+function set() end
 
 --[[
 函数名：getcalib
@@ -285,6 +290,12 @@ function getcalib()
 	return calib
 end
 
+--[[
+函数名：getaudflg
+功能  ：获取是否烧写音频参数标志
+参数  ：无
+返回值：true为烧写，其余为没烧写
+]]
 function getaudflg()
 	return audflg
 end
@@ -296,8 +307,8 @@ end
 返回值：电压，number类型，单位毫伏
 ]]
 function getvbatvolt()
-  local v1,v2,v3,v4,v5 = pmd.param_get()
-  return v2
+	local v1,v2,v3,v4,v5 = pmd.param_get()
+	return v2
 end
 
 --[[
@@ -326,6 +337,13 @@ local function ind(id,para)
 	elseif id=="DBG_END_IND" then
 		dbging = false
 		if flypending then setflymode(true) end
+	--NTP同步开始
+	elseif id=="NTP_BEGIN_IND" then
+		ntping = true
+	--NTP同步结束
+	elseif id=="NTP_END_IND" then
+		ntping = false
+		if flypending then setflymode(true) end
 	end
 
 	return true
@@ -334,19 +352,19 @@ end
 --注册以下AT命令的应答处理函数
 ril.regrsp("+ATWMFT",rsp)
 ril.regrsp("+WISN",rsp)
-ril.regrsp("+VER",rsp)
-ril.regrsp("+BLVER",rsp)
 ril.regrsp("+CGSN",rsp)
 ril.regrsp("+EGMR",rsp)
-ril.regrsp("+CSDS",rsp)
 ril.regrsp("+AMFAC",rsp)
 ril.regrsp("+CFUN",rsp)
 ril.regrsp("+AUD",rsp)
+--查询是否校准
 req("AT+ATWMFT=99")
+--查询序列号
 req("AT+WISN?")
+--查询IMEI
 req("AT+CGSN")
 req("AT+AUD?")
 --启动整分时钟通知定时器
 startclktimer()
 --注册本模块关注的内部消息的处理函数
-sys.regapp(ind,"SYS_WORKMODE_IND","UPDATE_BEGIN_IND","UPDATE_END_IND","DBG_BEGIN_IND","DBG_END_IND")
+sys.regapp(ind,"SYS_WORKMODE_IND","UPDATE_BEGIN_IND","UPDATE_END_IND","DBG_BEGIN_IND","DBG_END_IND","NTP_BEGIN_IND","NTP_END_IND")

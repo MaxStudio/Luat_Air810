@@ -17,17 +17,18 @@ local allpins = {}
 local function init()
 	for _,v in ipairs(allpins) do
 		if v.init == false then
-                -- 不做初始化
-		elseif not v.ptype or v.ptype == "GPIO" then
+			-- 不做初始化
+		elseif v.ptype == nil or v.ptype == "GPIO" then
 			v.inited = true
 			pio.pin.setdir(v.dir or pio.OUTPUT,v.pin)
-			if not v.dir or v.dir == pio.OUTPUT then
+			--[[if v.dir == nil or v.dir == pio.OUTPUT then
 				set(v.defval or false,v)
-			elseif v.dir == pio.INPUT or v.dir == pio.INT then
+			else]]
+			if v.dir == pio.INPUT or v.dir == pio.INT then
 				v.val = pio.pin.getval(v.pin) == v.valid
 			end
-		elseif v.set then
-			set(v.defval or false,v)
+		--[[elseif v.set then
+			set(v.defval or false,v)]]
 		end
 	end
 end
@@ -82,7 +83,6 @@ end
 返回值：如果引脚的电平和引脚配置的valid的值一致，返回true；否则返回false
 ]]
 function get(p)
-	if p.get then return p.get(p) end
 	return pio.pin.getval(p.pin) == p.valid
 end
 
@@ -97,19 +97,19 @@ end
 function set(bval,p)
 	p.val = bval
 
-	if not p.inited and (not p.ptype or p.ptype == "GPIO") then
+	if not p.inited and (p.ptype == nil or p.ptype == "GPIO") then
 		p.inited = true
 		pio.pin.setdir(p.dir or pio.OUTPUT,p.pin)
 	end
 
 	if p.set then p.set(bval,p) return end
 
-	if p.ptype and p.ptype ~= "GPIO" then print("unknwon pin type:",p.ptype) return end
+	if p.ptype ~= nil and p.ptype ~= "GPIO" then print("unknwon pin type:",p.ptype) return end
 
-	local valid = p.valid == 0 and 0 or 1
+	local valid = p.valid == 0 and 0 or 1 -- 默认高有效
 	local notvalid = p.valid == 0 and 1 or 0
 	local val = bval == true and valid or notvalid
-	print("pins.set",p.pin,val)
+
 	if p.pin then pio.pin.setval(val,p.pin) end
 end
 
@@ -122,7 +122,7 @@ end
 返回值：无
 ]]
 function setdir(dir,p)
-	if p and not p.ptype or p.ptype == "GPIO" then
+	if p and p.ptype == nil or p.ptype == "GPIO" then
 		if not p.inited then
 			p.inited = true
 		end
@@ -134,23 +134,6 @@ function setdir(dir,p)
 	end
 end
 
---[[
-函数名：close
-功能  ：设置引脚的方向
-参数  ：  
-    p： 引脚的名字
-返回值：无
-]]
-function close(p)
-  if p and not p.ptype or p.ptype == "GPIO" then
-    if not p.inited then
-      p.inited = true
-    end
-    if p.pin then
-      pio.pin.close(p.pin)
-    end
-  end
-end
 
 --[[
 函数名：intmsg
@@ -174,4 +157,3 @@ local function intmsg(msg)
 end
 --注册引脚中断的处理函数
 sys.regmsg(rtos.MSG_INT,intmsg)
-

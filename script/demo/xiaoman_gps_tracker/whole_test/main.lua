@@ -17,7 +17,7 @@ require"gsensor"
 require"light"
 require"gpsapp"
 require"wdt"
-wdt.open(pinscfg.RST_SCMWD,pinscfg.WATCHDOG)
+wdt.setup(pio.P0_20,pio.P0_31)
 require"keypad"
 keypad.init_keypad(keypad.DEV_TRACKER)
 require"sck"

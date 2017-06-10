@@ -8,13 +8,7 @@
 module(...,package.seeall)
 
 --加载常用的全局函数至本地
-local tonumber = tonumber
-local tinsert = table.insert
-local ssub = string.sub
-local sbyte = string.byte
-local schar = string.char
-local sformat = string.format
-local slen = string.len
+local tinsert,ssub,sbyte,schar,sformat,slen = table.insert,string.sub,string.byte,string.char,string.format,string.len
 
 --[[
 函数名：ucs2toascii
@@ -25,15 +19,15 @@ local slen = string.len
 ]]
 function ucs2toascii(inum)
 	local tonum = {}
-	for i=1,string.len(inum),4 do
-		table.insert(tonum,tonumber(string.sub(inum,i,i+3),16)%256)
+	for i=1,slen(inum),4 do
+		tinsert(tonum,tonumber(ssub(inum,i,i+3),16)%256)
 	end
 
-	return string.char(unpack(tonum))
+	return schar(unpack(tonum))
 end
 
 --[[
-函数名：ucs2toascii
+函数名：nstrToUcs2Hex
 功能  ：ascii字符串 转化为 ascii字符串的unicode编码的16进制字符串，仅支持数字和+，例如"+1234" -> "002B0031003200330034"
 参数  ：
 		inum：待转换字符串
@@ -43,8 +37,8 @@ function nstrToUcs2Hex(inum)
 	local hexs = ""
 	local elem = ""
 
-	for i=1,string.len(inum) do
-		elem = string.sub(inum,i,i)
+	for i=1,slen(inum) do
+		elem = ssub(inum,i,i)
 		if elem == "+" then
 			hexs = hexs .. "002B"
 		else
@@ -122,15 +116,16 @@ end
 功能  ：二进制数据 转化为 16进制字符串格式，例如91688121364265f7 （表示第1个字节是0x91，第2个字节为0x68，......） -> "91688121364265f7"
 参数  ：
 		bins：二进制数据
+		s：转换后，每两个字节之间的分隔符，默认没有分隔符
 返回值：转换后的字符串
 ]]
-function binstohexs(bins)
-	local hexs = ""
+function binstohexs(bins,s)
+	local hexs = "" 
 
 	if bins == nil or type(bins) ~= "string" then return nil,"nil input string" end
 
-	for i=1,string.len(bins) do
-		hexs = hexs .. sformat("%02X",sbyte(bins,i))
+	for i=1,slen(bins) do
+		hexs = hexs .. sformat("%02X",sbyte(bins,i)) ..(s==nil and "" or s)
 	end
 	hexs = string.upper(hexs)
 	return hexs
@@ -149,7 +144,7 @@ function hexstobins(hexs)
 
 	if hexs == nil or type(hexs) ~= "string" then return nil,"nil input string" end
 
-	for i=1,string.len(hexs),2 do
+	for i=1,slen(hexs),2 do
 		num = tonumber(ssub(hexs,i,i+1),16)
 		if num == nil then
 			return nil,"error num index:" .. i .. ssub(hexs,i,i+1)
@@ -176,7 +171,7 @@ end
 函数名：gb2312toucs2
 功能  ：gb2312编码 转化为 unicode小端编码
 参数  ：
-		ucs2s：gb2312编码数据
+		gb2312s：gb2312编码数据
 返回值：unicode小端编码数据
 ]]
 function gb2312toucs2(gb2312s)
@@ -200,7 +195,7 @@ end
 函数名：gb2312toucs2be
 功能  ：gb2312编码 转化为 unicode大端编码
 参数  ：
-		ucs2s：gb2312编码数据
+		gb2312s：gb2312编码数据
 返回值：unicode大端编码数据
 ]]
 function gb2312toucs2be(gb2312s)
@@ -208,7 +203,83 @@ function gb2312toucs2be(gb2312s)
 	return cd:iconv(gb2312s)
 end
 
-local function addzone(y,m,d,hh,mm,ss,zone)
+--[[
+函数名：ucs2toutf8
+功能  ：unicode小端编码 转化为 utf8编码
+参数  ：
+		ucs2s：unicode小端编码数据
+返回值：utf8码数据
+]]
+function ucs2toutf8(ucs2s)
+	local cd = iconv.open("utf8","ucs2")
+	return cd:iconv(ucs2s)
+end
+
+--[[
+函数名：utf8toucs2
+功能  ：utf8编码 转化为 unicode小端编码
+参数  ：
+		utf8s：utf8编码数据
+返回值：unicode小端编码数据
+]]
+function utf8toucs2(utf8s)
+	local cd = iconv.open("ucs2","utf8")
+	return cd:iconv(utf8s)
+end
+
+--[[
+函数名：ucs2betoutf8
+功能  ：unicode大端编码 转化为 utf8编码
+参数  ：
+		ucs2s：unicode大端编码数据
+返回值：utf8编码数据
+]]
+function ucs2betoutf8(ucs2s)
+	local cd = iconv.open("utf8","ucs2be")
+	return cd:iconv(ucs2s)
+end
+
+--[[
+函数名：utf8toucs2be
+功能  ：utf8编码 转化为 unicode大端编码
+参数  ：
+		utf8s：utf8编码数据
+返回值：unicode大端编码数据
+]]
+function utf8toucs2be(utf8s)
+	local cd = iconv.open("ucs2be","utf8")
+	return cd:iconv(utf8s)
+end
+
+--[[
+函数名：utf8togb2312
+功能  ：utf8编码 转化为 gb2312编码
+参数  ：
+		utf8s：utf8编码数据
+返回值：gb2312编码数据
+]]
+function utf8togb2312(utf8s)
+	local cd = iconv.open("ucs2","utf8")
+	local ucs2s = cd:iconv(utf8s)
+	cd = iconv.open("gb2312","ucs2")
+	return cd:iconv(ucs2s)
+end
+
+--[[
+函数名：gb2312toutf8
+功能  ：gb2312编码 转化为 utf8编码
+参数  ：
+		gb2312s：gb2312编码数据
+返回值：utf8编码数据
+]]
+function gb2312toutf8(gb2312s)
+	local cd = iconv.open("ucs2","gb2312")
+	local ucs2s = cd:iconv(gb2312s)
+	cd = iconv.open("utf8","ucs2")
+	return cd:iconv(ucs2s)
+end
+
+local function timeAddzone(y,m,d,hh,mm,ss,zone)
 
 	if not y or not m or not d or not hh or not mm or not ss then
 		return
@@ -252,7 +323,7 @@ local function addzone(y,m,d,hh,mm,ss,zone)
 	t.year,t.month,t.day,t.hour,t.min,t.sec = y,m,d,hh,mm,ss
 	return t
 end
-local function subzone(y,m,d,hh,mm,ss,zone)
+local function timeRmozone(y,m,d,hh,mm,ss,zone)
 	if not y or not m or not d or not hh or not mm or not ss then
 		return
 	end
@@ -310,12 +381,14 @@ end
 返回值：返回新时区对应的时间，table格式{year,month.day,hour,min,sec}
 ]]
 function transftimezone(y,m,d,hh,mm,ss,pretimezone,nowtimezone)
-	local t,zone = {},nowtimezone-pretimezone
+	local t = {}
+	local zone = nil
+	zone = nowtimezone - pretimezone
 
 	if zone >= 0 and zone < 23 then
-		t = addzone(y,m,d,hh,mm,ss,zone)
+		t = timeAddzone(y,m,d,hh,mm,ss,zone)
 	elseif zone < 0 and zone >= -24 then
-		t = subzone(y,m,d,hh,mm,ss,zone)
+		t = timeRmozone(y,m,d,hh,mm,ss,zone)
 	end
 	return t
 end

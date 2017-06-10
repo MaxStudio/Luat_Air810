@@ -14,11 +14,11 @@ local pmd = require"pmd"
 local uart = require"uart"
 local io = require"io"
 local os = require"os"
-local pio = require"pio"
 local watchdog = require"watchdog"
 local bit = require"bit"
+local pm = require"pm"
 local string = require"string"
-module("sys")
+module(...,package.seeall)
 
 --加载常用的全局函数至本地
 local print = base.print
@@ -30,12 +30,11 @@ local assert = base.assert
 local tonumber = base.tonumber
 local isn = 65535
 local hasPwrKey = false
-local opntrc = {}
 
 --lib脚本版本号，只要lib中的任何一个脚本做了修改，都需要更新此版本号
-SCRIPT_LIB_VER = "1.0.3"
+SCRIPT_LIB_VER = "1.0.4"
 --支持lib脚本的最小core软件版本号
-CORE_MIN_VER = "Luat_V0005_Air810"
+CORE_MIN_VER = "Luat_V0006_AIR810"
 
 --“是否需要刷新界面”的标志，有GUI的项目才会用到此标志
 local refreshflag = false
@@ -63,7 +62,7 @@ local loop = {}
 --lpring：是否已经启动自动关机定时器
 local lprfun,lpring
 --错误信息文件以及错误信息内容
-local LIB_ERR_FILE,liberr = "/lib_err.txt",""
+local LIB_ERR_FILE,liberr,extliberr = "/lib_err.txt",""
 --工作模式
 --SIMPLE_MODE：简单模式，默认不会开启“每一分钟产生一个内部消息”、“定时查询csq”、“定时查询ceng”的功能
 --FULL_MODE：完整模式，默认会开启“每一分钟产生一个内部消息”、“定时查询csq”、“定时查询ceng”的功能
@@ -154,17 +153,14 @@ end
 参数  ：
 		fnc：定时器的回调函数
 		ms：定时器时长，单位为毫秒
-		...：自定义可变参数
+		...：自定义可变参数，调用回调函数时，会把自定义的可变参数回传给用户
 		注意：fnc和可变参数...共同标记唯一的一个定时器
 返回值：定时器的ID，如果失败返回nil
 ]]
 function timer_start(fnc,ms,...)
-	--回调函数必须有效，否则死机重启
-	assert(fnc ~= nil,"timer_start:callback function == nil")
-	if ms==nil then
-        print("sys.timer_start",fnc)
-        return
-	end
+	--回调函数和时长必须有效，否则死机重启
+	assert(fnc~=nil and ms>0,"timer_start:callback function == nil")
+	--关闭完全相同的定时器
 	if arg.n == 0 then
 		timer_stop(fnc)
 	else
@@ -209,7 +205,7 @@ end
 参数  ：
 		fnc：定时器的回调函数
 		ms：定时器时长，单位为毫秒
-		...：自定义可变参数
+		...：自定义可变参数，调用回调函数时，会把自定义的可变参数回传给用户
 		注意：fnc和可变参数...共同标记唯一的一个定时器
 返回值：定时器的ID，如果失败返回nil
 ]]
@@ -236,7 +232,7 @@ function timer_stop(val,...)
 	else
 		for k,v in pairs(tpool) do
 			--回调函数相同
-			if type(v) == "table" and v.cb == val then
+			if type(v) == "table" and v.cb == val or v == val then
 				--自定义可变参数相同
 				if comp_table(arg,para[k])then
 					rtos.timer_stop(k)
@@ -257,7 +253,7 @@ end
 ]]
 function timer_stop_all(fnc)
 	for k,v in pairs(tpool) do
-		if type(v) == "table" and v.cb == fnc then
+		if type(v) == "table" and v.cb == fnc or v == fnc then
 			rtos.timer_stop(k)
 			tpool[k],para[k],loop[k] = nil
 		end
@@ -283,21 +279,6 @@ function timer_is_active(val,...)
 				if comp_table(arg,para[k]) then
 					return true
 				end
-			end
-		end
-		return false
-	end
-end
-
-function timer_is_active_anyone(val,...)
-	if type(val) == "number" then
-		return tpool[val] ~= nil
-	else
-		for k,v in pairs(tpool) do
-			if type(v) == "table" and v.cb == val or v == val then
-				--if comp_table(arg,para[k]) then
-					return true
-				--end
 			end
 		end
 		return false
@@ -330,11 +311,7 @@ end
 local function writetxt(f,v)
 	local file = io.open(f,"w")
 	if not file then print("sys.writetxt no open",f) return end	
-	local rt = file:write(v)
-	if not rt then
-		removegpsdat()
-		file:write(v)		
-	end
+	file:write(v)
 	file:close()
 end
 
@@ -346,6 +323,7 @@ end
 返回值：无
 ]]
 local function appenderr(s)
+	print("appenderr",s)
 	liberr = liberr..s
 	writetxt(LIB_ERR_FILE,liberr)	
 end
@@ -357,15 +335,20 @@ end
 返回值：无
 ]]
 local function initerr()
-	liberr = readtxt(LIB_ERR_FILE) or ""
-	print("sys.initerr",liberr)
+	extliberr = readtxt(LIB_ERR_FILE) or ""
+	print("sys.initerr",extliberr)
 	--删除LIB_ERR_FILE文件
 	os.remove(LIB_ERR_FILE)
 end
 
-local poweroffcb
-function regpoweroffcb(cb)
-	poweroffcb = cb
+--[[
+函数名：getextliberr
+功能  ：获取LIB_ERR_FILE文件中的错误信息，给外部模块使用
+参数  ：无
+返回值：LIB_ERR_FILE文件中的错误信息
+]]
+function getextliberr()
+	return extliberr
 end
 
 --[[
@@ -400,16 +383,14 @@ end
 返回值：无
 ]]
 local function checkcorever()
-  local regularexp = "[lL][uU][aA][tT]_[vV](%d+)_[aA][iI][rR](%w+)"
-  local realver = getcorever()
+	local realver = getcorever()
 	--如果没有获取到底层软件版本号
 	if not realver or realver=="" then
 		appenderr("checkcorever[no core ver error];")
 		return
 	end
 	
-	local buildver = string.match(realver,regularexp)
-
+	local buildver = string.match(realver,"Luat_V(%d+)_AIR810")
 	--如果底层软件版本号格式错误
 	if not buildver then
 		appenderr("checkcorever[core ver format error]"..realver..";")
@@ -417,8 +398,7 @@ local function checkcorever()
 	end
 	
 	--lib脚本需要的底层软件版本号大于底层软件的实际版本号
-	local minver = string.match(CORE_MIN_VER,regularexp)
-	if tonumber(minver) > tonumber(buildver) then
+	if tonumber(string.match(CORE_MIN_VER,"Luat_V(%d+)_AIR810"))>tonumber(buildver) then
 		appenderr("checkcorever[core ver match error]"..realver..","..CORE_MIN_VER..";")
 	end
 end
@@ -443,7 +423,6 @@ end
 function poweroff(r)
 	base.print("sys poweroff:",r)
 	if r then appenderr("poweroff["..r.."];") end
-	if poweroffcb then poweroffcb() end
 	rtos.poweroff()
 end
 
@@ -454,11 +433,7 @@ end
 返回值：true,充电器开机；false,非充电器开机。
 ]]
 function isPwronCharger()
-  if rtos.poweron_reason() == rtos.POWERON_CHARGER then
-    return true
-  end
-  
-  return false
+  return rtos.poweron_reason() == rtos.POWERON_CHARGER
 end
 
 --[[
@@ -493,22 +468,17 @@ end
 function init(mode,lprfnc)
 	--用户应用脚本中必须定义PROJECT和VERSION两个全局变量，否则会死机重启，如何定义请参考各个demo中的main.lua
 	assert(base.PROJECT and base.PROJECT ~= "" and base.VERSION and base.VERSION ~= "","Undefine PROJECT or VERSION")
-	base.require"keypad"
+	require"net"
+	require"keypad"
 	--设置AT命令的虚拟串口
 	uart.setup(uart.ATC,0,0,uart.PAR_NONE,uart.STOP_1)
-	--打开LDO_VIB
+	--打开LDO_VIB，有源天线供电
 	pmd.ldoset(1,pmd.LDO_VIB)
 	print("init mode :",mode,lprfnc)
-	print("poweron reason:",rtos.poweron_reason(),mode,base.PROJECT,base.VERSION)
+	print("poweron reason:",rtos.poweron_reason(),base.PROJECT,base.VERSION,SCRIPT_LIB_VER,CORE_MIN_VER,getcorever())
 
 	-- 模式0 充电器和闹钟开机都不注册网络
-  if mode == 0 then
-    if rtos.poweron_reason() ~= rtos.POWERON_CHARGER then
-      setPwrFlag(true)
-    else
-      setPwrFlag(false)
-    end
-  end
+	if mode==0 then setPwrFlag(rtos.poweron_reason() ~= rtos.POWERON_CHARGER) end
 	
 	-- 模式1 充电器和闹钟开机都注册网络
 	if mode == 1 then
@@ -527,10 +497,6 @@ function init(mode,lprfnc)
 			rtos.repoweron()
 		end
 	end
-	
-	--发送MSG_POWERON_REASON消息
-	base.require"net"
-	dispatch("MSG_POWERON_REASON",rtos.poweron_reason())
 	--如果存在脚本运行错误文件，打开文件，打印错误信息
 	local f = io.open("/luaerrinfo.txt","r")
 	if f then
@@ -541,6 +507,8 @@ function init(mode,lprfnc)
 	lprfun = lprfnc
 	initerr()
 	checkcorever()
+	pm.wake("sys.lua.daemon")
+	pm.sleep("sys.lua.daemon")
 end
 
 --[[
@@ -583,46 +551,24 @@ end
 函数名：opntrace
 功能  ：开启或者关闭print的打印输出功能
 参数  ：
-    v：false或nil为关闭，其余为开启
-    uartid：输出Luatrace的端口：nil表示host口，1表示uart1,3表示uart3
-    baudrate：number类型，uartid不为nil时，此参数才有意义，表示波特率，默认115200
-          仅支持1200,2400,4800,9600,14400,19200,28800,38400,57600,76800,115200,230400,460800,576000,921600,1152000,4000000
+		v：false或nil为关闭，其余为开启
+		uartid：输出Luatrace的端口：nil表示host口，1表示uart1,2表示uart2
+		baudrate：number类型，uartid不为nil时，此参数才有意义，表示波特率，默认115200
+				  仅支持1200,2400,4800,9600,14400,19200,28800,38400,57600,76800,115200,230400,460800,576000,921600,1152000,4000000
 返回值：无
 ]]
-local function opnsettrace(v,uartid,baudrate)
-  if uartid then
-    if v then
-      uart.setup(uartid,baudrate or 115200,8,uart.PAR_NONE,uart.STOP_1)
-    else
-      uart.close(uartid)
-    end
-  end
-  rtos.set_trace(v and 1 or 0,uartid)
-end
-
 function opntrace(v,uartid,baudrate)
-  if opntrc.id == nil then
-    opntrc.sta = v
-    opntrc.id = uartid
-    opntrc.rate = baudrate
-    opnsettrace(v,uartid,baudrate)
-  else
-    if v == opntrc.sta then
-      if uartid == opntrc.id and baudrate == opntrc.rate then
-        print("opntrace invalid!")
-      else
-        opntrc.sta = v
-        opntrc.id = uartid
-        opntrc.rate = baudrate
-        opnsettrace(v,uartid,baudrate)
-      end
-    else
-      print("opntrace invalid!")
-    end
-  end
+	if uartid then
+		if v then
+			uart.setup(uartid,baudrate or 115200,8,uart.PAR_NONE,uart.STOP_1)
+		else
+			uart.close(uartid)
+		end
+	end
+	rtos.set_trace(v and 1 or 0,uartid)
 end
 
---应用消息分发,消息通知
+--app存储表
 local apps = {}
 
 --[[
@@ -720,8 +666,8 @@ local function callapp(msg)
 		--遍历app表
 		for i=#apps,1,-1 do
 			app = apps[i]
-      --函数注册方式的app,带id通知
-			if app.procer then
+			--函数注册方式的app,带消息id通知
+			if app.procer then 
 				for _,v in ipairs(app) do
 					if v == id then
 						--如果消息的处理函数没有返回true，则此消息的生命期结束；否则一直遍历app
@@ -730,8 +676,8 @@ local function callapp(msg)
 						end
 					end
 				end
-      -- 处理表方式的app,不带id通知
-			elseif app[id] then
+			--table注册方式的app,不带消息id通知
+			elseif app[id] then 
 				--如果消息的处理函数没有返回true，则此消息的生命期结束；否则一直遍历app
 				if app[id](unpack(msg,2,#msg)) ~= true then
 					return
@@ -921,9 +867,3 @@ function removegpsdat()
 	end
 end
 
---timer_start(removegpsdat,3600*1000)
-
-if rtos.poweron_reason() == 0 then
-  pio.pin.setdir(pio.OUTPUT,pio.P1_3)
-  pio.pin.setval(1,pio.P1_3)
-end

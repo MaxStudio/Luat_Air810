@@ -82,7 +82,7 @@ end
 功能  ：位置包发送结果处理，发送成功或者超时，都会进入飞行模式，启动5分钟的“退出飞行模式，连接后台”定时器
 参数  ：  
         result： bool类型，发送结果或者是否超时，true为成功或者超时，其他为失败
-		item：table类型，{data=,para=}，消息回传的参数和数据，例如调用linkapp.scksnd时传入的第2个和第3个参数分别为dat和par，则item={data=dat,para=par}
+		item：table类型，{data=,para=}，消息回传的参数和数据，例如调用socket.send时传入的第2个和第3个参数分别为dat和par，则item={data=dat,para=par}
 返回值：无
 ]]
 function locrptcb(result,item)
@@ -103,7 +103,7 @@ end
 功能  ：发送数据结果事件的处理
 参数  ：  
         result： bool类型，消息事件结果，true为成功，其他为失败
-		item：table类型，{data=,para=}，消息回传的参数和数据，例如调用linkapp.scksnd时传入的第2个和第3个参数分别为dat和par，则item={data=dat,para=par}
+		item：table类型，{data=,para=}，消息回传的参数和数据，例如调用socket.send时传入的第2个和第3个参数分别为dat和par，则item={data=dat,para=par}
 返回值：无
 ]]
 local function sndcb(item,result)
@@ -146,15 +146,15 @@ end
 函数名：ntfy
 功能  ：socket状态的处理函数
 参数  ：
-        idx：number类型，linkapp中维护的socket idx，跟调用linkapp.sckconn时传入的第一个参数相同，程序可以忽略不处理
+        idx：number类型，socket.lua中维护的socket idx，跟调用socket.connect时传入的第一个参数相同，程序可以忽略不处理
         evt：string类型，消息事件类型
 		result： bool类型，消息事件结果，true为成功，其他为失败
-		item：table类型，{data=,para=}，消息回传的参数和数据，目前只是在SEND类型的事件中用到了此参数，例如调用linkapp.scksnd时传入的第2个和第3个参数分别为dat和par，则item={data=dat,para=par}
+		item：table类型，{data=,para=}，消息回传的参数和数据，目前只是在SEND类型的事件中用到了此参数，例如调用socket.send时传入的第2个和第3个参数分别为dat和par，则item={data=dat,para=par}
 返回值：无
 ]]
 function ntfy(idx,evt,result,item)
 	print("ntfy",evt,result,item)
-	--连接结果(调用socket.connect后的异步事件)
+	--连接结果（调用socket.connect后的异步事件）
 	if evt == "CONNECT" then
 		conning = false
 		--连接成功
@@ -169,7 +169,7 @@ function ntfy(idx,evt,result,item)
 			--RECONN_PERIOD秒后重连
 			sys.timer_start(reconn,RECONN_PERIOD*1000)
 		end	
-	--数据发送结果(调用socket.send后的异步事件)
+	--数据发送结果（调用socket.send后的异步事件）
 	elseif evt == "SEND" then
 		if item then
 			sndcb(item,result)
@@ -177,10 +177,10 @@ function ntfy(idx,evt,result,item)
 	--连接被动断开
 	elseif evt == "STATE" and result == "CLOSED" then
 		--补充自定义功能代码
-	--连接主动断开(调用link.shut后的异步事件)
+	--连接主动断开（调用link.shut后的异步事件）
 	elseif evt == "STATE" and result == "SHUTED" then
 		--补充自定义功能代码
-	--连接主动断开(调用socket.disconnect后的异步事件)
+	--连接主动断开（调用socket.disconnect后的异步事件）
 	elseif evt == "DISCONNECT" then
 		--补充自定义功能代码			
 	end
@@ -195,7 +195,7 @@ end
 函数名：rcv
 功能  ：socket接收数据的处理函数
 参数  ：
-        idx ：linkapp中维护的socket idx，跟调用linkapp.sckconn时传入的第一个参数相同，程序可以忽略不处理
+        idx ：socket.lua中维护的socket idx，跟调用socket.connect时传入的第一个参数相同，程序可以忽略不处理
         data：接收到的数据
 返回值：无
 ]]

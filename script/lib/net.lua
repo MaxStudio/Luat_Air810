@@ -10,7 +10,7 @@ local string = require"string"
 local sys = require "sys"
 local ril = require "ril"
 local pio = require"pio"
-local sim = require"sim"
+require"sim"
 module("net")
 
 --加载常用的全局函数至本地
@@ -24,6 +24,8 @@ local tonumber,tostring,print = base.tonumber,base.tostring,base.print
 --REGISTERED：注册上GSM网络
 --UNREGISTER：未注册上GSM网络
 local state,cengset = "INIT"
+--SIM卡状态：true为异常，false或者nil为正常
+local simerrsta
 
 --lac：位置区ID
 --ci：小区ID
@@ -42,19 +44,17 @@ local csqqrypriod,cengqrypriod = 60*1000
 --multicellcb：获取多小区的回调函数
 local cellinfo,flymode,pwrkeymode,csqswitch,cengswitch,multicellcb = {}
 
---[[
-ledstate：网络指示灯状态INIT,FLYMODE,SIMERR,IDLE,CREG,CGATT,SCK
-  INIT：功能关闭状态
-  FLYMODE：飞行模式
-  SIMERR：未检测到SIM卡或者SIM卡锁pin码等异常
-  IDLE：未注册GSM网络
-  CREG：已注册GSM网络
-  CGATT：已附着GPRS数据网络
-  SCK：用户socket已连接上后台
-ledontime：指示灯点亮时长(毫秒)
-ledofftime：指示灯熄灭时长(毫秒)
-usersckconnect：用户socket是否连接上后台
-]]
+--ledstate：网络指示灯状态INIT,FLYMODE,SIMERR,IDLE,CREG,CGATT,SCK
+--INIT：功能关闭状态
+--FLYMODE：飞行模式
+--SIMERR：未检测到SIM卡或者SIM卡锁pin码等异常
+--IDLE：未注册GSM网络
+--CREG：已注册GSM网络
+--CGATT：已附着GPRS数据网络
+--SCK：用户socket已连接上后台
+--ledontime：指示灯点亮时长(毫秒)
+--ledofftime：指示灯熄灭时长(毫秒)
+--usersckconnect：用户socket是否连接上后台
 local ledstate,ledontime,ledofftime,usersckconnect = "INIT",0,0
 --[[
 ledflg：网络指示灯开关
@@ -77,7 +77,7 @@ ledcgatton,ledcgattoff CGATT状态下指示灯的点亮和熄灭时长(毫秒)
 7) 连接上服务器：亮0.1秒，灭0.1秒
 ledsckon,ledsckoff     SCK状态下指示灯的点亮和熄灭时长(毫秒)
 ]]
-local ledflymodeon,ledflymodeoff,ledsimerron,ledsimerroff,ledidleon,ledidleoff,ledcregon,ledcregoff,ledcgatton,ledcgattoff,ledsckon,ledsckoff = 0,0xFFFF,300,5700,300,3700,300,700,300,1700,100,100
+local ledflymodeon,ledflymodeoff,ledsimerron,ledsimerroff,ledidleon,ledidleoff,ledcregon,ledcregoff,ledcgatton,ledcgattoff,ledsckon,ledsckoff = 0,0xFFFF,300,5700,300,3700,300,1700,300,700,100,100
 
 --[[
 函数名：print
@@ -130,7 +130,6 @@ local function creg(data)
 	--未注册
 	else
 		s = "UNREGISTER"
-		-- req("AT+ESIMS?")
 	end
 	--注册状态发生了改变
 	if s ~= state then
@@ -380,6 +379,7 @@ function startquerytimer() end
 返回值：无
 ]]
 local function simind(para)
+	print("simind",simerrsta,para)
 	if simerrsta ~= (para~="RDY") then
 		simerrsta = (para~="RDY")
 		procled()
@@ -461,13 +461,13 @@ end
 返回值：无
 ]]
 function startcsqtimer()
-  --不是飞行模式 并且 (打开了查询开关 或者 工作模式为完整模式)
-  if not flymode and (csqswitch or sys.getworkmode()==sys.FULL_MODE) then
-    --发送AT+CSQ查询
-    csqquery()
-    --启动定时器
-    sys.timer_start(startcsqtimer,csqqrypriod)
-  end
+	--不是飞行模式 并且 (打开了查询开关 或者 工作模式为完整模式)
+	if not flymode and (csqswitch or sys.getworkmode()==sys.FULL_MODE) then
+		--发送AT+CSQ查询
+		csqquery()
+		--启动定时器
+		sys.timer_start(startcsqtimer,csqqrypriod)
+	end
 end
 
 --[[
@@ -477,13 +477,13 @@ end
 返回值：无
 ]]
 function startcengtimer()
-  --设置了查询间隔 并且 不是飞行模式 并且 (打开了查询开关 或者 工作模式为完整模式)
-  if cengqrypriod and not flymode and (cengswitch or sys.getworkmode()==sys.FULL_MODE) then
-    --发送AT+CENG?查询
-    cengquery()
-    --启动定时器
-    sys.timer_start(startcengtimer,cengqrypriod)
-  end
+	--设置了查询间隔 并且 不是飞行模式 并且 (打开了查询开关 或者 工作模式为完整模式)
+	if cengqrypriod and not flymode and (cengswitch or sys.getworkmode()==sys.FULL_MODE) then
+		--发送AT+CENG?查询
+		cengquery()
+		--启动定时器
+		sys.timer_start(startcengtimer,cengqrypriod)
+	end
 end
 
 --[[
@@ -533,7 +533,7 @@ end
 返回值：无
 ]]
 function setcengqueryperiod(period)
-	if period ~= cengqrypriod then
+	if period ~= cengqrypriod then		
 		if period <= 0 then
 			sys.timer_stop(startcengtimer)
 		else
@@ -574,26 +574,26 @@ end
 返回值：如果有用户自定义的获取多基站信息的回调函数，则返回nil；否则返回true
 ]]
 local function cellinfoind()
-  if multicellcb then
-    local cb = multicellcb
-    multicellcb = nil
-    cb(getcellinfoext())
-  else
-    return true
-  end
+	if multicellcb then
+		local cb = multicellcb
+		multicellcb = nil
+		cb(getcellinfoext())
+	else
+		return true
+	end
 end
 
 --[[
 函数名：getmulticell
 功能  ：读取“当前和临近小区信息”
 参数  ：
-    cb：回调函数，当读取到小区信息后，会调用此回调函数，调用形式为cb(cells)，其中cells为string类型，格式为：
-        当前和临近位置区、小区、mcc、mnc、以及信号强度的拼接字符串，例如：460.01.6311.49234.30;460.01.6311.49233.23;460.02.6322.49232.18;
+		cb：回调函数，当读取到小区信息后，会调用此回调函数，调用形式为cb(cells)，其中cells为string类型，格式为：
+		    当前和临近位置区、小区、mcc、mnc、以及信号强度的拼接字符串，例如：460.01.6311.49234.30;460.01.6311.49233.23;460.02.6322.49232.18;
 返回值：无 
 ]]
 function getmulticell(cb)
-  multicellcb = cb
-  cengquery()
+	multicellcb = cb
+	cengquery()
 end
 
 --[[
@@ -628,6 +628,8 @@ end
 ]]
 local function ledblinkon()
 	--print("ledblinkon",ledstate,ledontime,ledofftime)
+	--引脚输出电平控制指示灯点亮
+	pio.pin.setval(ledvalid==1 and 1 or 0,ledpin)
 	--常灭
 	if ledontime==0 and ledofftime==0xFFFF then
 		ledblinkoff()
@@ -638,10 +640,9 @@ local function ledblinkon()
 		sys.timer_stop(ledblinkoff)
 	--闪烁
 	else
-	  ledblinkflush(true)
 		--启动点亮时长定时器，定时到了之后，熄灭指示灯
 		sys.timer_start(ledblinkoff,ledontime)
-	end
+	end	
 end
 
 --[[
@@ -652,6 +653,8 @@ end
 ]]
 function ledblinkoff()
 	--print("ledblinkoff",ledstate,ledontime,ledofftime)
+	--引脚输出电平控制指示灯熄灭
+	pio.pin.setval(ledvalid==1 and 0 or 1,ledpin)
 	--常灭
 	if ledontime==0 and ledofftime==0xFFFF then
 		--关闭点亮时长定时器和熄灭时长定时器
@@ -662,10 +665,9 @@ function ledblinkoff()
 		ledblinkon()
 	--闪烁
 	else
-	  ledblinkflush(false)
 		--启动熄灭时长定时器，定时到了之后，点亮指示灯
 		sys.timer_start(ledblinkon,ledofftime)
-	end
+	end	
 end
 
 --[[
@@ -683,6 +685,8 @@ function procled()
 		--飞行模式
 		if flymode then
 			newstate,newontime,newofftime = "FLYMODE",ledflymodeon,ledflymodeoff
+		elseif simerrsta then
+			newstate,newontime,newofftime = "SIMERR",ledsimerron,ledsimerroff
 		--用户socket连接到了后台
 		elseif usersckconnect then
 			newstate,newontime,newofftime = "SCK",ledsckon,ledsckoff
@@ -691,21 +695,13 @@ function procled()
 			newstate,newontime,newofftime = "CGATT",ledcgatton,ledcgattoff
 		--注册上GSM网络
 		elseif state=="REGISTERED" then
-			newstate,newontime,newofftime = "CREG",ledcregon,ledcregoff
-		elseif simerrsta then
-			newstate,newontime,newofftime = "SIMERR",ledsimerron,ledsimerroff
+			newstate,newontime,newofftime = "CREG",ledcregon,ledcregoff		
 		end
 		--指示灯状态发生变化
 		if newstate~=ledstate then
 			ledstate,ledontime,ledofftime = newstate,newontime,newofftime
 			ledblinkoff()
 		end
-	else
-    sys.timer_stop(ledblinkon)
-    sys.timer_stop(ledblinkoff)
-    pio.pin.setdir(pio.OUTPUT,ledpin)
-    pio.pin.setval(ledvalid==1 and 0 or 1,ledpin)
-    pio.pin.close(ledpin)
 	end
 end
 
@@ -763,19 +759,18 @@ function setled(v,pin,valid,flymodeon,flymodeoff,simerron,simerroff,idleon,idleo
 			ledpin,ledvalid,ledidleon,ledidleoff,ledcregon,ledcregoff = pin or ledpin,valid or ledvalid,idleon or ledidleon,idleoff or ledidleoff,cregon or ledcregon,cregoff or ledcregoff
 			ledcgatton,ledcgattoff,ledsckon,ledsckoff = cgatton or ledcgatton,cgattoff or ledcgattoff,sckon or ledsckon,sckoff or ledsckoff
 			ledflymodeon,ledflymodeoff,ledsimerron,ledsimerroff = flymodeon or ledflymodeon,flymodeoff or ledflymodeoff,simerron or ledsimerron,simerroff or ledsimerroff
-			if not oldledflg then pio.pin.setdir(pio.OUTPUT,ledpin) pio.pin.setval(1,ledpin) end
+			if not oldledflg then pio.pin.setdir(pio.OUTPUT,ledpin) end
 			procled()
 		--关闭
 		else
 			sys.timer_stop(ledblinkon)
 			sys.timer_stop(ledblinkoff)
 			if oldledflg then
-			  pio.pin.setdir(pio.OUTPUT,ledpin)
 				pio.pin.setval(ledvalid==1 and 0 or 1,ledpin)
 				pio.pin.close(ledpin)
 			end
 			ledstate = "INIT"
-		end
+		end		
 	end
 end
 

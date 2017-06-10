@@ -21,17 +21,14 @@ local print = base.print
 local send = link.send
 local dispatch = sys.dispatch
 
---[[
-updmode: 远程升级模式，可在main.lua中，配置UPDMODE变量，未配置的话默认为0
-  0：自动升级模式，脚本更新后，自动重启完成升级
-  1：用户自定义模式，如果后台有新版本，会产生一个消息，由用户应用脚本决定是否升级
-updsuc: 远程升级是否成功，true 成功，false 失败
-]]
-local updmode,updsuc = base.UPDMODE or 0
+--远程升级模式，可在main.lua中，配置UPDMODE变量，未配置的话默认为0
+--0：自动升级模式，脚本更新后，自动重启完成升级
+--1：用户自定义模式，如果后台有新版本，会产生一个消息，由用户应用脚本决定是否升级
+local updmode = base.UPDMODE or 0
 
 --PROTOCOL：传输层协议，只支持TCP和UDP
 --SERVER,PORT为服务器地址和端口
-local PROTOCOL,SERVER,PORT = "UDP","api.airm2m.com",12410
+local PROTOCOL,SERVER,PORT = "UDP","firmware.openluat.com",12410
 --是否使用用户自定义的升级服务器
 local usersvr
 --升级包保存路径
@@ -44,7 +41,7 @@ local ERROR_PACK_TIMEOUT = 10000
 -- 每次GET命令重试次数
 local CMD_GET_RETRY_TIMES = 5
 --socket id
-local lid
+local lid,updsuc
 --设置定时升级的时间周期，单位秒，0表示关闭定时升级
 local period = 0
 --状态机状态
@@ -92,7 +89,6 @@ local function save(data)
 		print("save:file nil")
 		return
 	end
-
 	--写文件
 	local rt = f:write(data)
 	if not rt then
@@ -127,7 +123,7 @@ local function retry(param)
 	end
 	--重试次数加1
 	getretries = getretries + 1
-	if getretries < CMD_GET_RETRY_TIMES then
+		if getretries < CMD_GET_RETRY_TIMES then
 		-- 未达重试次数,继续尝试获取升级包
 		if state == "UPDATE" then
 			reqget(packid)
@@ -186,7 +182,7 @@ local function getpack(data)
 	--保存升级包
 	save(string.sub(data,3,-1))
 	--如果是用户自定义模式，产生一个内部消息UP_PROGRESS_IND，表示升级进度
-	if updmode == 1 or updmode == 2 then
+	if updmode == 1 then
 		dispatch("UP_EVT","UP_PROGRESS_IND",packid*100/total)
 	end
 
@@ -251,7 +247,7 @@ function upend(succ)
 		sys.restart("update.upend")
 	end
 	--如果是自定义升级模式，产生一个内部消息UP_END_IND，表示升级结束以及升级结果
-	if (updmode == 1 or updmode == 2) and tmpsta == "UPDATE" then
+	if updmode == 1 and tmpsta ~= "IDLE" then
 		dispatch("UP_EVT","UP_END_IND",succ)
 	end
 	--产生一个内部消息UPDATE_END_IND，目前与飞行模式配合使用
@@ -286,7 +282,6 @@ end
 返回值：无
 ]]
 local function nofity(id,evt,val)
-	print("notify",evt,val)
 	--连接结果
 	if evt == "CONNECT" then
 		--产生一个内部消息UPDATE_BEGIN_IND，目前与飞行模式配合使用
@@ -299,8 +294,7 @@ local function nofity(id,evt,val)
 			upend(false)
 		end
 	--连接被动断开
-	elseif evt == "STATE" and val == "CLOSED" then
-		 --服务器断开链接 直接判定升级失败
+	elseif evt == "STATE" and val == "CLOSED" then		 
 		upend(false)
 	end
 end
@@ -345,7 +339,7 @@ local function recv(id,data)
 			if updmode == 0 then
 				upbegin(data)
 			--自定义升级模式
-			elseif updmode == 1 or updmode == 2 then
+			elseif updmode == 1 then
 				chkrspdat = data
 				dispatch("UP_EVT","NEW_VER_IND",upselcb)
 			else
@@ -354,6 +348,17 @@ local function recv(id,data)
 		--没有新版本
 		else
 			upend(false)
+		end
+		--如果用户应用脚本中调用了settimezone接口
+		if timezone then
+			local clk,a,b = {}
+			a,b,clk.year,clk.month,clk.day,clk.hour,clk.min,clk.sec = string.find(data,"(%d+)%-(%d+)%-(%d+) *(%d%d):(%d%d):(%d%d)")
+			--如果服务器返回了正确的时间格式
+			if a and b then
+				--设置系统时间
+				clk = common.transftimezone(clk.year,clk.month,clk.day,clk.hour,clk.min,clk.sec,BEIJING_TIME,timezone)
+				misc.setclock(clk)
+			end
 		end
 	--“升级中”状态
 	elseif state == "UPDATE" then
@@ -364,18 +369,7 @@ local function recv(id,data)
 		end
 	else
 		upend(false)
-	end
-
-	if timezone then
-		--更新系统时间
-		local clk = {}
-		local a,b = nil,nil
-		a,b,clk.year,clk.month,clk.day,clk.hour,clk.min,clk.sec = string.find(data,"(%d+)%-(%d+)%-(%d+) *(%d%d):(%d%d):(%d%d)")
-		if a and b then
-			clk = common.transftimezone(clk.year,clk.month,clk.day,clk.hour,clk.min,clk.sec,BEIJING_TIME,timezone)
-			misc.setclk(clk,60)
-		end
-	end
+	end	
 end
 
 --[[
@@ -387,14 +381,6 @@ end
 ]]
 function settimezone(zone)
 	timezone = zone
-end
-
-function setmode(m)
-	updmode = m
-end
-
-function getmode()
-	return updmode
 end
 
 function connect()
@@ -419,16 +405,15 @@ end
 函数名：setup
 功能  ：配置服务器的传输协议、地址和端口
 参数  ：
-  prot：传输层协议，仅支持TCP和UDP
-  server：服务器地址
-  port：服务器端口
+        prot ：传输层协议，仅支持TCP和UDP
+		server：服务器地址
+		port：服务器端口
 返回值：无
 ]]
 function setup(prot,server,port)
 	if prot and server and port then
 		PROTOCOL,SERVER,PORT = prot,server,port
 		usersvr = true
-		--只有当定义了项目标识与版本号才支持远程升级
 		base.assert(base.PROJECT and base.VERSION,"undefine PROJECT or VERSION in main.lua")		
 		connect()
 	end
@@ -442,7 +427,7 @@ end
 返回值：无
 ]]
 function setperiod(prd)
-	base.assert(prd==0 or prd>=60,"undefine PROJECT or VERSION in main.lua")
+	base.assert(prd==0 or prd>=60,"setperiod prd error")
 	print("setperiod",prd)
 	period = prd
 	if prd==0 then

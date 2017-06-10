@@ -191,7 +191,7 @@ end
 参数  ：无
 返回值：基本状态信息封包字符串
 ]]
-local function enstat()
+local function enstat()	
 	local stat = getstatus()
 	local rssi = net.getrssi()
 	local gpstat = getgpstat()
@@ -206,7 +206,7 @@ end
 
 local function enlnla(v,s)
 	if not v then return common.hexstobins("FFFFFFFFFF") end
-
+	
 	local v1,v2 = smatch(s,"(%d+)%.(%d+)")
 
 	if slen(v1) < 3 then v1 = srep("0",3-slen(v1)) .. v1 end
@@ -265,7 +265,7 @@ end
 --[[
 函数名：connectedcb
 功能  ：MQTT CONNECT成功回调函数
-参数  ：无
+参数  ：无		
 返回值：无
 ]]
 local function connectedcb()
@@ -299,7 +299,7 @@ end
 --[[
 函数名：imeirdy
 功能  ：IMEI读取成功，成功后，才去创建mqtt client，连接服务器，因为用到了IMEI号
-参数  ：无
+参数  ：无		
 返回值：无
 ]]
 local function imeirdy()
@@ -313,7 +313,6 @@ local procer =
 {
 	IMEI_READY = imeirdy,
 }
-
 --注册消息的处理函数
 sys.regapp(procer)
 --设置30秒钟查询一个基站信息

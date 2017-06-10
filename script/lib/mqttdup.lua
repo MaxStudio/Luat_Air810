@@ -1,5 +1,3 @@
-module(...,package.seeall)
-
 --[[
 模块名称：publish报文重发管理
 模块功能：QoS为1的publish报文重发处理
@@ -7,6 +5,7 @@ module(...,package.seeall)
 模块最后修改时间：2017.02.24
 ]]
 
+module(...,package.seeall)
 
 --DUP_TIME：发送publish报文后，DUP_TIME秒内判断有没有收到puback
 --DUP_CNT：没有收到puback报文的publish报文重发的最大次数

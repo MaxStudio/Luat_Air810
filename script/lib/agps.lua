@@ -30,6 +30,7 @@
 --¶¨ÒåÄ£¿é,µ¼ÈëÒÀÀµ¿â
 local base = _G
 local table = require"table"
+local lpack = require"pack"
 local rtos = require"rtos"
 local sys = require"sys"
 local string = require"string"
@@ -52,6 +53,7 @@ local sformat = string.format
 local smatch = string.match
 local sgsub = string.gsub
 local schar = string.char
+local srep = string.rep
 local send = link.send
 local dispatch = sys.dispatch
 
@@ -67,7 +69,7 @@ itv£ºÁ¬½ÓAGPSºóÌ¨¼ä¸ô£¬µ¥Î»Ãë£¬Ä¬ÈÏ2Ð¡Ê±£¬ÊÇÖ¸2Ð¡Ê±Á¬½ÓÒ»´ÎAGPSºóÌ¨£¬¸üÐÂÒ»´ÎÐÇÀ
 PROT,SVR,PORT£ºAGPSºóÌ¨´«Êä²ãÐ­Òé¡¢µØÖ·¡¢¶Ë¿Ú
 WRITE_INTERVAL£ºÃ¿¸öÐÇÀúÊý¾Ý°üÐ´ÈëGPSÄ£¿éµÄ¼ä¸ô£¬µ¥Î»ºÁÃë
 ]]
-local ispt,itv,PROT,SVR,PORT,WRITE_INTERVAL = true,(2*3600),"UDP","lbs.airm2m.com",2988,100
+local ispt,itv,PROT,SVR,PORT,WRITE_INTERVAL = true,(2*3600),"UDP","bs.openluat.com",12412,100
 --[[
 mode£ºAGPS¹¦ÄÜ¹¤×÷Ä£Ê½£¬ÓÐÒÔÏÂÁ½ÖÖ£¨Ä¬ÈÏÎª0£©
   0£º×Ô¶¯Á¬½ÓºóÌ¨¡¢ÏÂÔØÐÇÀúÊý¾Ý¡¢Ð´ÈëGPSÄ£¿é
@@ -348,6 +350,68 @@ local function agpswr()
 	return true
 end
 
+local function bcd(d,n)
+	local l = slen(d or "")
+	local num
+	local t = {}
+
+	for i=1,l,2 do
+		num = tonumber(ssub(d,i,i+1),16)
+
+		if i == l then
+			num = 0xf0+num
+		else
+			num = (num%0x10)*0x10 + num/0x10
+		end
+
+		table.insert(t,num)
+	end
+
+	local s = string.char(base.unpack(t))
+
+	l = slen(s)
+
+	if l < n then
+		s = s .. string.rep("\255",n-l)
+	elseif l > n then
+		s = ssub(s,1,n)
+	end
+
+	return s
+end
+
+local function encellinfo(s)
+	local ret,t,mcc,mnc,lac,ci,rssi,k,v,m,n,cntrssi = "",{}
+	print("syy encellinfo",s)
+	for mcc,mnc,lac,ci,rssi in string.gmatch(s,"(%d+)%.(%d+)%.(%d+)%.(%d+)%.(%d+);") do
+		mcc,mnc,lac,ci,rssi = tonumber(mcc),tonumber(mnc),tonumber(lac),tonumber(ci),(tonumber(rssi) > 31) and 31 or tonumber(rssi)
+		local handle = nil
+		for k,v in pairs(t) do
+			print("syy v.lac",v.lac,lac,v.mcc,mcc,v.mnc,mnc,#v.rssici)
+			if v.lac == lac and v.mcc == mcc and v.mnc == mnc then
+				if #v.rssici < 8 then
+					table.insert(v.rssici,{rssi=rssi,ci=ci})
+				end
+				--handle = true
+				break
+			end
+		end
+		print("syy handle",handle)
+		if not handle then
+			table.insert(t,{mcc=mcc,mnc=mnc,lac=lac,rssici={{rssi=rssi,ci=ci}}})
+		end
+	end
+	for k,v in pairs(t) do
+		ret = ret .. lpack.pack(">HHb",v.lac,v.mcc,v.mnc)
+		for m,n in pairs(v.rssici) do
+			cntrssi = bit.bor(bit.lshift(((m == 1) and (#v.rssici-1) or 0),5),n.rssi)
+			ret = ret .. lpack.pack(">bH",cntrssi,n.ci)
+		end
+	end
+
+	return #t,string.char(#t)..ret
+end
+
 --[[
 º¯ÊýÃû£ºreqcheck
 ¹¦ÄÜ  £º·¢ËÍ¡°ÇëÇóÐÇÀúÐÅÏ¢¡±Êý¾Ýµ½·þÎñÆ÷
@@ -356,7 +420,7 @@ end
 ]]
 function reqcheck()
 	state = "CHECK"
-	local imei = misc.getimei()
+	--[[local imei = misc.getimei()
 	local mnc = tonumber(net.getmnc(),16)
 	local mcc = tonumber(net.getmcc(),16)
 	local cell = tonumber(net.getci(),16)
@@ -389,7 +453,19 @@ function reqcheck()
 		send(lid,str)
 	else
 		sys.timer_start(retry,GET_TIMEOUT)
-	end
+	end]]
+	local s = net.getcellinfoext()
+	
+	local num,sr = encellinfo(s)
+	
+	print("syy num",num)
+	
+	if num >= 2 then
+		local str = lpack.pack("bAbAA",1,string.char(0),0,bcd(misc.getimei(),8),sr)
+		link.send(lid,str)	
+	else
+		sys.timer_start(retry,GET_TIMEOUT)
+	end	
 end
 
 --[[
@@ -447,6 +523,43 @@ function setsucstr()
 	end
 end
 
+local function unbcd(d)
+	local byte,v1,v2
+	local t = {}
+
+	for i=1,slen(d) do
+		byte = sbyte(d,i)
+		v1,v2 = bit.band(byte,0x0f),bit.band(bit.rshift(byte,4),0x0f)
+
+		if v1 == 0x0f then break end
+		table.insert(t,v1)
+
+		if v2 == 0x0f then break end
+		table.insert(t,v2)
+	end
+
+	return table.concat(t)
+end
+
+local function trans(lat,lng)
+	local la,ln = lat,lng
+	if slen(lat)>10 then
+		la = ssub(lat,1,10)
+	elseif slen(lat)<10 then
+		la = lat..srep("0",10-slen(lat))
+	end
+	if slen(lng)>10 then
+		ln = ssub(lng,1,10)
+	elseif slen(lng)<10 then
+		ln = lng..srep("0",10-slen(lng))
+	end
+	
+	local la1,ln1 = sgsub(ssub(la,1,3),"0",""),sgsub(ssub(ln,1,3),"0","")
+	
+	return la1.."."..ssub(la,4,-1),ln1.."."..ssub(ln,4,-1)
+end
+
+
 --[[
 º¯ÊýÃû£ºrcv
 ¹¦ÄÜ  £ºsocket½ÓÊÕÊý¾ÝµÄ´¦Àíº¯Êý
@@ -459,9 +572,24 @@ local function rcv(id,data)
 	base.collectgarbage()
 	--Í£Ö¹ÖØÊÔ¶¨Ê±Æ÷
 	sys.timer_stop(retry)
-	print("rcv",data)
-	--Èç¹û¶¨Î»³É¹¦»òÕß²»Ö§³ÖGPSÄ£¿é
-	if smatch(data,"^3,") then
+	print("syy rcv",slen(data),(slen(data)<270) and common.binstohexs(data) or "")
+	if slen(data) >=11 then
+		local lat,lng,latdm,lngdm = trans(unbcd(ssub(data,2,6)),unbcd(ssub(data,7,11)))
+		print("syy rcv",lat,lng)
+		if not lat or not lng then return end
+		local str = '$PMTK741,'..lat..','..lng..',0,'
+		print("syy rcv str",str)
+		setagpstr(str)
+		if gps.isopen() then
+			agpswr()	
+		elseif not agpsop then
+			gps.opengps("AGPS")
+			agpsop = true
+		end
+		upend(true)
+		return		
+	end	
+	--[[if smatch(data,"^3,") then
 		print(data)
 		local str1,str2,str3,str4 = smatch(data,"%d+,(%d+%.%d+),(%d+%.%d+),(%d+%/%d+%/%d+) (%d+%:%d+%:%d+)")
 		if not str1 or not str2 then print("rcv invalid data") return end
@@ -474,7 +602,7 @@ local function rcv(id,data)
 			gps.opengps("AGPS")
 			agpsop = true
 		end
-	end
+	end]]
 	if isfix or not gpssupport then
 		upend(true)
 		return

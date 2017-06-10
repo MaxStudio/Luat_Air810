@@ -3,8 +3,11 @@ local base = _G
 local sys  = require"sys"
 local mqtt = require"mqtt"
 local misc = require"misc"
+local lpack = require"pack"
 require"aliyuniotauth"
 module(...,package.seeall)
+
+local slen = string.len
 
 --阿里云上创建的key和secret，用户不要修改这两个值，否则无法连接上Luat的云后台
 local PRODUCT_KEY,PRODUCT_SECRET = "1000163201","4K8nYcT4Wiannoev"
@@ -56,6 +59,52 @@ local function sckerrcb(r)
 	end
 end
 
+function bcd(d,n)
+	local l = slen(d or "")
+	local num
+	local t = {}
+
+	for i=1,l,2 do
+		num = tonumber(string.sub(d,i,i+1),16)
+
+		if i == l then
+			num = 0xf0+num
+		else
+			num = (num%0x10)*0x10 + num/0x10
+		end
+
+		table.insert(t,num)
+	end
+
+	local s = string.char(_G.unpack(t))
+
+	l = slen(s)
+
+	if l < n then
+		s = s .. string.rep("\255",n-l)
+	elseif l > n then
+		s = string.sub(s,1,n)
+	end
+
+	return s
+end
+
+local base64bcdimei
+local function getbase64bcdimei()
+	if not base64bcdimei then
+		local imei = misc.getimei()
+		local imei1,imei2 = string.sub(imei,1,7),string.sub(imei,8,14)
+		imei1,imei2 = string.format("%06X",tonumber(imei1)),string.format("%06X",tonumber(imei2))
+		imei = common.hexstobins(imei1..imei2)
+		base64bcdimei = crypto.base64_encode(imei,6)
+		if string.sub(base64bcdimei,-1,-1)=="=" then base64bcdimei = string.sub(base64bcdimei,1,-2) end
+		base64bcdimei = string.gsub(base64bcdimei,"+","-")
+		base64bcdimei = string.gsub(base64bcdimei,"/","_")
+		base64bcdimei = string.gsub(base64bcdimei,"=","@")
+	end
+	return base64bcdimei
+end
+
 --[[
 函数名：connectedcb
 功能  ：MQTT CONNECT成功回调函数
@@ -65,10 +114,18 @@ end
 local function connectedcb()
 	print("connectedcb")
 	--订阅主题
-	mqttclient:subscribe({{topic="/"..PRODUCT_KEY.."/"..misc.getimei().."/get",qos=0}, {topic="/"..PRODUCT_KEY.."/"..misc.getimei().."/get",qos=1}}, subackcb, "subscribegetopic")
+	mqttclient:subscribe({{topic="/"..PRODUCT_KEY.."/"..getbase64bcdimei().."/g",qos=0}, {topic="/"..PRODUCT_KEY.."/"..getbase64bcdimei().."/g",qos=1}}, subackcb, "subscribegetopic")
 	assert(_G.PRODUCT_KEY and _G.PROJECT and _G.VERSION,"undefine PRODUCT_KEY or PROJECT or VERSION in main.lua")
-	local tpayload = {cmd="0",ProductKey=_G.PRODUCT_KEY,IMEI=misc.getimei(),DeviceSecret=misc.getsn(),ICCID=sim.geticcid(),imsi=sim.getimsi(),project=_G.PROJECT,version=_G.VERSION}
-	mqttclient:publish("/"..PRODUCT_KEY.."/"..misc.getimei().."/v1/LuatInside",json.encode(tpayload),1)
+	local payload = lpack.pack("bbpbpbpbpbpbp",
+								0,
+								0,_G.PRODUCT_KEY,
+								1,_G.PROJECT.."_"..sys.getcorever(),
+								2,bcd(string.gsub(_G.VERSION,"%.","")),
+								3,misc.getsn(),
+								4,sim.geticcid(),
+								5,sim.getimsi()
+								)
+	mqttclient:publish("/"..PRODUCT_KEY.."/"..getbase64bcdimei().."/1/0",payload,1)
 	--注册事件的回调函数，MESSAGE事件表示收到了PUBLISH消息
 	mqttclient:regevtcb({MESSAGE=grcvmessagecb})
 	if gconnectedcb then gconnectedcb() end
@@ -131,10 +188,11 @@ sys.regapp(procer)
 参数  ：
 		productkey：string类型，产品标识，必选参数
 		productsecret：string类型，产品密钥，必选参数
+		devicename：string类型，设备名
 返回值：无
 ]]
-local function config(productkey,productsecret)
-	sys.dispatch("ALIYUN_AUTH_BGN",productkey,productsecret)
+local function config(productkey,productsecret,devicename)
+	sys.dispatch("ALIYUN_AUTH_BGN",productkey,productsecret,devicename)
 end
 
 function regcb(connectedcb,rcvmessagecb,connecterrcb)
@@ -142,7 +200,13 @@ function regcb(connectedcb,rcvmessagecb,connecterrcb)
 end
 
 function publish(payload,qos,ackcb,usertag)
-	mqttclient:publish("/"..PRODUCT_KEY.."/"..misc.getimei().."/update",payload,qos,ackcb,usertag)
+	mqttclient:publish("/"..PRODUCT_KEY.."/"..getbase64bcdimei().."/u",payload,qos,ackcb,usertag)
 end
 
-config(PRODUCT_KEY,PRODUCT_SECRET)
+local function imeirdy()
+	getbase64bcdimei()
+	config(PRODUCT_KEY,PRODUCT_SECRET,getbase64bcdimei())
+	return true
+end
+
+sys.regapp(imeirdy,"IMEI_READY")

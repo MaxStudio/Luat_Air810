@@ -77,7 +77,11 @@ local currcmd,currarg,currsp,curdelay,curetry,cmdhead,cmdtype,rspformt
 -- 反馈结果,中间信息,结果信息
 local result,interdata,respdata
 
--- ril会出现三种情况: 命令回复\主动上报\命令超时
+--ril会出现三种情况: 
+--发送AT命令，收到应答
+--发送AT命令，命令超时没有应答
+--底层软件主动上报的通知，下文我们简称为urc
+
 --[[
 函数名：atimeout
 功能  ：发送AT命令，命令超时没有应答的处理
@@ -132,7 +136,7 @@ local formtab = {}
 		head：此应答对应的AT命令头，去掉了最前面的AT两个字符
 		fnc：AT命令应答的处理函数
 		typ：AT命令的应答类型，取值范围NORESULT,NUMBERIC,SLINE,MLINE,STRING,SPECIAL
-		intermediate：typ为STRING时，进一步定义STRING中的详细格式
+		formt：typ为STRING时，进一步定义STRING中的详细格式
 返回值：成功返回true，失败false
 ]]
 function regrsp(head,fnc,typ,formt)
@@ -237,7 +241,7 @@ local function urc(data)
 	if data == "RDY" then
 		radioready = true
 	else
-		local prefix = smatch(data,"(%+*[%u%d ]+)")
+		local prefix = smatch(data,"(%+*[%u%d& ]+)")
 		--执行prefix的urc处理函数，返回数据过滤器
 		urcfilter = urctable[prefix](data,prefix)
 	end

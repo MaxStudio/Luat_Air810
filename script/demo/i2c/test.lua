@@ -1,6 +1,6 @@
 module(...,package.seeall)
 
-local i2cid,intregaddr = 1,0x1A
+local i2cid = 1
 
 --[[
 函数名：print
@@ -13,17 +13,6 @@ local function print(...)
 end
 
 --[[
-函数名：i2c_close
-功能  ：关闭i2c
-参数  ：id i2c的标识
-返回值：无
-]]
-local function i2c_close(id)
-  print("i2c_close",id)
-  i2c.close(id)
-end
-
---[[
 函数名：init
 功能  ：打开i2c，写初始化命令给从设备寄存器，并从从设备寄存器读取值
 参数  ：无
@@ -31,6 +20,9 @@ end
 ]]
 local function init()
 	local i2cslaveaddr = 0x0E
+	--注意，此处的i2cslaveaddr是7bit地址
+	--底层在读操作时，自动将第一个字节的内容转换为(i2cslaveaddr << 1) | 0x01
+	--底层在写操作时，自动将第一个字节的内容转换为(i2cslaveaddr << 1) | 0x00
 	if i2c.setup(i2cid,i2c.SLOW,i2cslaveaddr) ~= i2c.SLOW then
 		print("init fail")
 		return
@@ -43,7 +35,5 @@ local function init()
 end
 
 init()
-
 --5秒后关闭i2c
-sys.timer_start(i2c_close,5000,i2cid)
-
+sys.timer_start(i2c.close,5000,i2cid)

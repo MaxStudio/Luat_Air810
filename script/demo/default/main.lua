@@ -2,8 +2,7 @@
 --PROJECT：ascii string类型，可以随便定义，只要不使用,就行
 --VERSION：ascii string类型，如果使用Luat物联云平台固件升级的功能，必须按照"X.X.X"定义，X表示1位数字；否则可随便定义
 PROJECT = "DEFAULT"
-VERSION = "1.0.1"
-
+VERSION = "1.0.2"
 require"sys"
 --[[
 如果使用UART输出trace，打开这行注释的代码"--sys.opntrace(true,1)"即可，第2个参数1表示UART1输出trace，根据自己的需要修改这个参数
@@ -11,9 +10,9 @@ require"sys"
 如果写在后面的其他位置，很有可能无法输出错误信息，从而增加调试难度
 ]]
 sys.opntrace(true,1)
---加载硬件看门狗功能模块
 require"wdt"
 require"linkair"
+require"factory"
 
 sys.init(0,0)
 sys.run()
