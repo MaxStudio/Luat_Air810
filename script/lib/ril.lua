@@ -227,6 +227,7 @@ local urcfilter
 
 local function kickoff()
 	radioready = true
+	sendat()
 end
 
 --[[
@@ -424,7 +425,8 @@ end
 参数  ：无
 返回值：无
 ]]
-local function sendat()
+function sendat()
+	--print("sendat",radioready,readat,currcmd,delaying)
 	if not radioready or readat or currcmd ~= nil or delaying then
 		-- 未初始化/正在读取atc数据、有命令在执行、队列无命令 直接退出
 		return

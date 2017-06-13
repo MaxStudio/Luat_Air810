@@ -50,7 +50,18 @@ local connectnoretinterval
 --dbging：是否正在执行dbg功能(dbg.lua)
 --ntping：是否正在执行NTP时间同步功能(ntp.lua)
 --shutpending：是否有等待处理的进入AT+CIPSHUT请求
-local apnflag,checkciicrtm,flymode,updating,dbging,ntping,shutpending=true
+local apnflag,checkciicrtm,flymode,updating,dbging,ntping,shutpending,pdpdeacting=true
+
+
+--[[
+函数名：print
+功能  ：打印接口，此文件中的所有打印都会加上link前缀
+参数  ：无
+返回值：无
+]]
+local function print(...)
+	base.print("link",...)
+end
 
 --[[
 函数名：setapn
@@ -136,14 +147,14 @@ end
 返回值：无
 ]]
 function setupIP()
-	print("link.setupIP:",ipstatus,cgatt,flymode)
+	print("setupIP:",ipstatus,cgatt,flymode)
 	--数据网络已激活或者处于飞行模式，直接返回
 	if ipstatus ~= "IP INITIAL" or flymode then
 		return
 	end
 	--gprs数据网络没有附着上
 	if cgatt ~= "1" then
-		print("setupip: wait cgatt")
+		print("setupIP: wait cgatt")
 		return
 	end
 
@@ -177,13 +188,13 @@ end
 local function validaction(id,action)
 	--socket无效
 	if linklist[id] == nil then
-		print("link.validaction:id nil",id)
+		print("validaction:id nil",id)
 		return false
 	end
 
 	--同一个状态不重复执行
 	if action.."ING" == linklist[id].state then
-		print("link.validaction:",action,linklist[id].state)
+		print("validaction:",action,linklist[id].state)
 		return false
 	end
 
@@ -192,7 +203,7 @@ local function validaction(id,action)
 	if ing then
 		--有其他任务在处理时,不允许处理连接,断链或者关闭是可以的
 		if action == "CONNECT" and linklist[id].state~= "SHUTING" then
-			print("link.validaction: action running",linklist[id].state,action)
+			print("validaction: action running",linklist[id].state,action)
 			return false
 		end
 	end
@@ -214,7 +225,7 @@ end
 function openid(id,notify,recv,tag)
 	--id越界或者id的socket已经存在
 	if id > MAXLINKS or linklist[id] ~= nil then
-		print("openid:error",id)
+		print("error",id)
 		return false
 	end
 
@@ -264,6 +275,7 @@ end
 返回值：true成功，false失败
 ]]
 function close(id)
+	print("close",id)
 	--检查是否允许关闭
 	if validaction(id,"CLOSE") == false then
 		return false
@@ -304,22 +316,21 @@ sys.regapp(asyncLocalEvent,"LINK_ASYNC_LOCAL_EVENT")
 返回值：请求成功同步返回true，否则false；
 ]]
 function connect(id,protocol,address,port)
+	print("connect",id,protocol,address,port,ipstatus,sckconning,shuting)
 	--不允许发起连接动作
 	if validaction(id,"CONNECT") == false or linklist[id].state == "CONNECTED" then
 		return false
 	end
 
-	linklist[id].state = "CONNECTING"
-
 	if cc and cc.anycallexist() then
 		--如果打开了通话功能 并且当前正在通话中使用异步通知连接失败
-		print("link.connect:failed cause call exist")
+		print("connect:failed cause call exist")
 		sys.dispatch("LINK_ASYNC_LOCAL_EVENT",statusind,id,"CONNECT FAIL")
 		return true
 	end
 
 	local connstr = string.format("AT+CIPSTART=%d,\"%s\",\"%s\",%s",id,protocol,address,port)
-
+	linklist[id].state = "CONNECTING"
 	if (ipstatus ~= "IP STATUS" and ipstatus ~= "IP PROCESSING") or sckconning or shuting then
 		-- ip环境未准备好先加入等待
 		linklist[id].pending = connstr
@@ -340,6 +351,7 @@ end
 返回值：true成功，false失败
 ]]
 function disconnect(id)
+	print("disconnect",id)
 	--不允许断开动作
 	if validaction(id,"DISCONNECT") == false then
 		return false
@@ -348,7 +360,7 @@ function disconnect(id)
 	if linklist[id].pending then
 		linklist[id].pending = nil
 		if ipstatus ~= "IP STATUS" and ipstatus ~= "IP PROCESSING" and linklist[id].state == "CONNECTING" then
-			print("link.disconnect: ip not ready",ipstatus)
+			print("disconnect: ip not ready",ipstatus)
 			linklist[id].state = "DISCONNECTING"
 			sys.dispatch("LINK_ASYNC_LOCAL_EVENT",closecnf,id,"DISCONNECT","OK")
 			return
@@ -373,17 +385,17 @@ end
 function send(id,data)
 	--socket无效，或者socket未连接
 	if linklist[id] == nil or linklist[id].state ~= "CONNECTED" then
-		print("link.send:error",id)
+		print("send:error",id)
 		return false
 	end
 
 	if cc and cc.anycallexist() then
 		-- 如果打开了通话功能 并且当前正在通话中使用异步通知连接失败
-		print("link.send:failed cause call exist")
+		print("send:failed cause call exist")
 		return false
 	end
 	--执行数据发送
-	print("link.send",id,string.len(data),(string.len(data) > 200) and "" or data)
+	print("send",id,string.len(data),(string.len(data) > 200) and "" or data)
 	socket.sock_send(id,data)
 
 	return true
@@ -409,16 +421,16 @@ end
 返回值：无
 ]]
 local function recv(id,data)
-	print("link.recv",id,string.len(data)>200 and "" or data)
+	print("recv",id,string.len(data)>200 and "" or data)
 	if not id or not linklist[id] then
-		print("link.recv:error",id)
+		print("recv:error",id)
 		return
 	end
 	--调用socket id对应的用户注册的数据接收处理函数
 	if linklist[id].recv then
 		linklist[id].recv(id,data)
 	else
-		print("link.recv:nil recv",id)
+		print("recv:nil recv",id)
 	end
 end
 
@@ -463,7 +475,7 @@ end
 返回值：无
 ]]
 local function sendcnf(id,result)
-	if not id or not linklist[id] then print("link.sendcnf:error",id) return end
+	if not id or not linklist[id] then print("sendcnf:error",id) return end
 	local str = string.match(result,"([%u ])")
 	--发送失败
 	if str == "TCP ERROR" or str == "UDP ERROR" or str == "ERROR" then
@@ -481,12 +493,13 @@ end
 		result：关闭结果字符串
 返回值：无
 ]]
-function closecnf(id,result)
+function closecnf(id,result)	
 	--socket id无效
 	if not id or not linklist[id] then
-		print("link.closecnf:error",id)
+		print("closecnf:error",id)
 		return
 	end
+	print("closecnf",id,result,linklist[id].state,shuting)
 	--不管任何的close结果,链接总是成功断开了,所以直接按照链接断开处理
 	if linklist[id].state == "DISCONNECTING" then
 		linklist[id].state = "CLOSED"
@@ -504,7 +517,7 @@ function closecnf(id,result)
 		linklist[id].state = "CLOSED"
 		linklist[id].notify(id,"STATE","SHUTED")
 	else
-		print("link.closecnf:error",linklist[id].state)
+		print("closecnf:error",linklist[id].state)
 	end
 end
 
@@ -516,14 +529,16 @@ end
 		state：状态字符串
 返回值：无
 ]]
-function statusind(id,state)
+function statusind(id,state)	
 	--socket无效
 	if linklist[id] == nil then
-		print("link.statusind:nil id",id)
+		print("statusind:nil id",id)
 		return
 	end
+	
+	print("statusind",id,state,linklist[id].state)
 
-         -- 快发失败的提示会变成URC
+    -- 快发失败的提示会变成URC
 	if state == "SEND FAIL" then
 		if linklist[id].state == "CONNECTED" then
 			linklist[id].notify(id,"SEND",state)
@@ -564,12 +579,13 @@ end
 ]]
 local function connpend()
 	for k,v in pairs(linklist) do
-		print("link.connpend",v.pending)
+		print("connpend",v.pending)
 		if v.pending then
 			local id,protocol,address,port = string.match(v.pending,"AT%+CIPSTART=(%d+),\"(%a+)\",\"(.+)\",(%d+)")
 			if id then
 				id = tonumber(id)
 				socket.sock_conn(id,(protocol=="TCP") and 0 or 1,tonumber(port),address)
+				linklist[id].state = "CONNECTING"
 				startconnectingtimer(id)
 				sckconning = true
 			end
@@ -592,7 +608,7 @@ end
 返回值：无
 ]]
 local function setIPStatus(status)
-	print("ipstatus:",status,ipstatus)
+	print("setIPStatus:",status,ipstatus)
 
 	if ipstatus ~= status then
 		if ipstatusind then
@@ -625,6 +641,7 @@ local function closeall()
 
 	for i = 0,MAXLINKS do
 		if linklist[i] then
+			print("closeall",linklist[i].state,linklist[i].pending)
 			if linklist[i].state == "CONNECTING" and linklist[i].pending then
 				-- 对于尚未进行过的连接请求 不提示close,IP环境建立后自动连接
 			elseif linklist[i].state == "INITIAL" then -- 未连接的也不提示
@@ -638,6 +655,12 @@ local function closeall()
 	end
 end
 
+local function pdpdeact()
+	socket.pdp_deactivate()
+	pdpdeacting = true
+	sys.timer_start(pdpdeactrsp,10000,true)
+end
+
 --[[
 函数名：shut
 功能  ：关闭IP网络
@@ -645,10 +668,11 @@ end
 返回值：无
 ]]
 function shut()
+	print("shut",updating,dbging,ntping,shutpending)
 	--如果正在执行远程升级功能或者dbg功能或者ntp功能，则延迟关闭
 	if updating or dbging or ntping then shutpending = true return end
 	closeall()
-	socket.pdp_deactivate()
+	pdpdeact()
 	sckconning = false
 	--设置关闭中标志
 	shuting = true
@@ -657,15 +681,27 @@ function shut()
 end
 reset = shut
 
+function pdpdeactrsp(tmout)
+	print("pdpdeactrsp",tmout,ipstatus)
+	pdpdeacting = false
+	if tmout and ipstatus == "IP STATUS" then
+		connpend()
+	end
+	sys.timer_stop(pdpdeactrsp,true)
+end
+
 local function pdpactcnf(result)
 	if result == 1 then
+		pdpdeactrsp()
 		setIPStatus("IP STATUS")
 	else
-		socket.pdp_deactivate()
+		pdpdeact()
 	end
 end
 
 local function pdpdeactcnf(result)
+	shuting = false
+	pdpdeactrsp()
 	setIPStatus("IP INITIAL")
 end
 
@@ -711,7 +747,7 @@ local tntfy =
 }
 
 local function ntfy(msg,v1,v2,v3)
-	print("link.ntfy",tntfy[msg] and tntfy[msg].nm or "unknown",v1,v2,v3)
+	print("ntfy",tntfy[msg] and tntfy[msg].nm or "unknown",v1,v2,v3)
 	if tntfy[msg] then		
 		tntfy[msg].hd(v1,v2,v3)
 	end
@@ -780,7 +816,7 @@ function setquicksend() end
 返回值：true
 ]]
 local function netmsg(id,data)
-	print("syy netmsg",data)
+	print("netmsg",data)
 	if data == "REGISTERED" then
 		--mtk需要主动attach
 		setcgatt(1)
