@@ -410,7 +410,8 @@ end
 function reqcheck()
 	state = "CHECK"
 	local num,sr = encellinfo(net.getcellinfoext())
-	link.send(lid,lpack.pack("bAbAA",1,string.char(0),0,bcd(misc.getimei(),8),sr))	
+	link.send(lid,lpack.pack("bAbAA",1,string.char(0),0,bcd(misc.getimei(),8),sr))
+	sys.timer_start(retry,GET_TIMEOUT)
 end
 
 --[[
