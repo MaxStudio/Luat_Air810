@@ -250,8 +250,9 @@ end
 
 local function printrcv(data)
 	if data=="\r\n" then return end
+	if smatch(data,"^%+CENG:.+\r\n$") then return end
 	if sys.getworkmode()==sys.SIMPLE_MODE then
-		if smatch(data,"^%+CENG:.+\r\n$") or smatch(data,"^%+CPIN:.+\r\n$") then return end
+		if --[[smatch(data,"^%+CENG:.+\r\n$") or ]]smatch(data,"^%+CPIN:.+\r\n$") then return end
 		if data=="OK\r\n" and currcmd=="AT+CPIN?" then return end
 	end
 	

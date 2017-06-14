@@ -4,6 +4,8 @@
         lib脚本版本号：1.0.6
         支持lib脚本的最小core软件版本号：Luat_V0006_Air810
         (1)lbsloc.lua：超时重试间隔由2秒修改为5秒
+        (2)ril.lua：不再打印CENG的信息
+        (3)agps.lua：精简代码；修正“只搜索到一个小区时无法启动AGPS功能”的问题
 
 
 

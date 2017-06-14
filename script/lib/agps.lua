@@ -42,20 +42,9 @@ local bit = require"bit"
 module(...,package.seeall)
 
 --加载常用的全局函数至本地
-local print = base.print
-local tonumber = base.tonumber
-local fly = base.fly
-local sfind = string.find
-local slen = string.len
-local ssub = string.sub
-local sbyte = string.byte
-local sformat = string.format
-local smatch = string.match
-local sgsub = string.gsub
-local schar = string.char
-local srep = string.rep
-local send = link.send
-local dispatch = sys.dispatch
+local print,tonumber,fly = base.print,base.tonumber,base.fly
+local sfind,slen,ssub,sbyte,sformat,smatch,sgsub,schar,srep = string.find,string.len,string.sub,string.byte,string.format,string.match,string.gsub,string.char,string.rep
+local send,dispatch = link.send,sys.dispatch
 
 --[[
 lid：socket id
@@ -420,52 +409,8 @@ end
 ]]
 function reqcheck()
 	state = "CHECK"
-	--[[local imei = misc.getimei()
-	local mnc = tonumber(net.getmnc(),16)
-	local mcc = tonumber(net.getmcc(),16)
-	local cell = tonumber(net.getci(),16)
-	local lac = tonumber(net.getlac(),16)
-	local cellinfo = net.getcellinfo()
-	print("reqcheck",imei,mnc,mcc,lac,cell)
-	local num,s,st,st2 = 0,''
-	local strtab = {}
-	for st,st2,st3 in string.gmatch(cellinfo ,"(%d+).(%d+).(%d+);*") do
-		num = num + 1
-		table.insert(strtab,{lac = st,cell=st2,rs=st3})
-	end
-	print("reqcheck s,num",s,num)
-	table.sort(strtab,function(a,b) return tonumber(a.rs)>tonumber(b.rs) end )
-	for i=1, #strtab do
-		if s then
-			s = s..","..strtab[i].lac..","..strtab[i].cell
-		else
-			s= strtab[i].lac..","..strtab[i].cell
-		end
-	end
-	for i = num,5 do
-		s= s..',,'
-	end
-	print("reqcheck s",s)
-
-	local str = imei..",3,"..lac..","..cell..","..s..","..mnc..","..mcc
-	print("reqcheck str",str,num)
-	if num >= 3 then
-		send(lid,str)
-	else
-		sys.timer_start(retry,GET_TIMEOUT)
-	end]]
-	local s = net.getcellinfoext()
-	
-	local num,sr = encellinfo(s)
-	
-	print("syy num",num)
-	
-	if num >= 2 then
-		local str = lpack.pack("bAbAA",1,string.char(0),0,bcd(misc.getimei(),8),sr)
-		link.send(lid,str)	
-	else
-		sys.timer_start(retry,GET_TIMEOUT)
-	end	
+	local num,sr = encellinfo(net.getcellinfoext())
+	link.send(lid,lpack.pack("bAbAA",1,string.char(0),0,bcd(misc.getimei(),8),sr))	
 end
 
 --[[
@@ -588,21 +533,7 @@ local function rcv(id,data)
 		end
 		upend(true)
 		return		
-	end	
-	--[[if smatch(data,"^3,") then
-		print(data)
-		local str1,str2,str3,str4 = smatch(data,"%d+,(%d+%.%d+),(%d+%.%d+),(%d+%/%d+%/%d+) (%d+%:%d+%:%d+)")
-		if not str1 or not str2 then print("rcv invalid data") return end
-		local str = '$PMTK741,'..str2..','..str1..',0,'
-		print("rcv str",str)
-		setagpstr(str)
-		if gps.isopen() then
-			agpswr()
-		elseif not agpsop then
-			gps.opengps("AGPS")
-			agpsop = true
-		end
-	end]]
+	end		
 	if isfix or not gpssupport then
 		upend(true)
 		return
@@ -729,7 +660,7 @@ end
 ]]
 local function load(force)
 	local pwrstat = pwrcb and pwrcb()
-	if --[[(rtos.poweron_reason() == rtos.POWERON_KEY or rtos.poweron_reason() == rtos.POWERON_CHARGER or pwrstat) and ]](gps.isagpspwronupd() or force) then
+	if (gps.isagpspwronupd() or force) then
 		connect()
 	else
 		startupdatetimer()
