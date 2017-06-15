@@ -12,32 +12,32 @@ require"agps"
 
 --[[
 函数名：print
-功能  ：打印接口，此文件中的所有打印都会加上gpsapp前缀
+功能  ：打印接口，此文件中的所有打印都会加上test前缀
 参数  ：无
 返回值：无
 ]]
 local function print(...)
-	_G.print("testgps",...)
+	_G.print("test",...)
 end
 
 --[[
 判断是否定位成功  gps.isfix()
 获取经纬度信息      gps.getgpslocation()
+速度 gps.getgpsspd()
+方向角 gps.getgpscog()
+海拔 gps.getaltitude()
 ]]
 
 local function test1cb(cause)
-  print("test1cb",cause,gps.isfix())
-  print("test1cb",cause,gps.isfix(),gps.getgpslocation())
+  print("test1cb",cause,gps.isfix(),gps.getgpslocation(),gps.getgpsspd(),gps.getgpscog(),gps.getaltitude())
 end
 
 local function test2cb(cause)
-  print("test2cb",cause,gps.isfix())
-  print("test2cb",cause,gps.isfix(),gps.getgpslocation())
+  print("test2cb",cause,gps.isfix(),gps.getgpslocation(),gps.getgpsspd(),gps.getgpscog(),gps.getaltitude())
 end
 
 local function test3cb(cause)
-  print("test3cb",cause,gps.isfix())
-  print("test3cb",cause,gps.isfix(),gps.getgpslocation())
+  print("test3cb",cause,gps.isfix(),gps.getgpslocation(),gps.getgpsspd(),gps.getgpscog(),gps.getaltitude())
 end
 
 --测试代码开关，取值1,2
@@ -66,4 +66,6 @@ local function gps_open(typ)
 end
 
 gps.init()
+--如果需要GPS的时间来同步模块时间，则打开下面这行注释的代码
+--gps.settimezone(gps.GPS_BEIJING_TIME)
 gps_open(testidx)

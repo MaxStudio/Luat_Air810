@@ -21,18 +21,8 @@ local pack = require"pack"
 module(...,package.seeall)
 
 --加载常用的全局函数至本地
-local print = base.print
-local tonumber = base.tonumber
-local tostring = base.tostring
-local pairs = base.pairs
-local smatch = string.match
-local sfind = string.find
-local slen = string.len
-local ssub = string.sub
-local smatch = string.match
-local sbyte = string.byte
-local sformat = string.format
-local srep = string.rep
+local print,tonumber,tostring,pairs = base.print,base.tonumber,base.tostring,base.pairs
+local smatch,sfind,slen,ssub,sbyte,sformat,srep = string.match,string.find,string.len,string.sub,string.byte,string.format,string.rep
 
 --gps全局信息表
 local gps = {}
@@ -57,21 +47,6 @@ GPS_HAS_CHIP_EVT = 5
 --GPS定位成功事件（还没有过滤前段时间的数据）
 GPS_LOCATION_UNFILTER_SUC_EVT = 6
 
---省电模式
-GPS_POWER_SAVE_MODE = 0
---连续定位模式
-GPS_CONTINUOUS_MODE = 1
---仅支持北斗定位
-GPS_SINGLE_BEIDOU_GNSS = 2
---仅支持GPS定位
-GPS_SINGLE_GPS_GNSS = 3
---GPS和北斗混合定位
-GPS_MIX_GNSS = 4
---NEMA协议版本
-GPS_NMEA_VERSION = 5
---查询PACC
-QRY_PACC = 6
-
 --经纬度为度的格式
 GPS_DEGREES = 0
 --经纬度为度分的格式
@@ -89,10 +64,6 @@ GPS_KNOT_SPD = 0
 --速度单位为公里每小时
 GPS_KILOMETER_SPD = 1
 
---nogpschipcnt：gps开启后，如果读取nogpschipcnt次串口，都没有收到数据，则认为没有GPS芯片
---hdop,paccflg,paccqry,pacc：判断gps定位精度的4个参数
-local nogpschipcnt,hdop,paccflg,paccqry,pacc = 5
-
 --[[
 函数名：abs
 功能  ：求两个数之差的绝对值
@@ -104,12 +75,6 @@ local nogpschipcnt,hdop,paccflg,paccqry,pacc = 5
 local function abs(v1,v2)
 	return ((v1>v2) and (v1-v2) or (v2-v1))
 end
-
---[[
-local function emptyque()
-	gps.dataN,gps.A,gps.L = 0,{},{}
-end
-]]
 
 local function getmilli(v,vr)
 	local L,ov1,v1,v2,R,T,OT = slen(v)
@@ -147,7 +112,7 @@ end
 返回值：无
 ]]
 local function getstrength(sg)
-	local d1,d2,curnum,lineno,total,sgv_str = sfind(sg,gps.gsvprefix.."GSV,(%d),(%d),(%d+),(.*)%*.*")
+	local d1,d2,curnum,lineno,total,sgv_str = sfind(sg,"GSV,(%d),(%d),(%d+),(.*)%*.*")
 	if not curnum or not lineno or not total or not sgv_str then
 		return
 	end
@@ -188,15 +153,11 @@ local function getstrength(sg)
 				local front = ssub(gps.gsv,1,m2)
 				local n1,n2 = sfind(front,"%d+,%d*,%d*,%d*,$")
 				if n1 and n2 then
-					if (gps.gsvprefix == "GP" and tonumber(id) <= 32) or gps.gsvprefix == "" then
-						gps.gsv = ssub(gps.gsv,1,n1-1)..cur..ssub(gps.gsv,n2+1,-1)
-					end
+					gps.gsv = ssub(gps.gsv,1,n1-1)..cur..ssub(gps.gsv,n2+1,-1)
 				end
 			end
 		else
-			if (gps.gsvprefix == "GP" and tonumber(id) <= 32) or gps.gsvprefix == "" then
-				gps.gsv = gps.gsv..cur
-			end
+			gps.gsv = gps.gsv..cur
 		end
 		
 		tmpstr = ssub(tmpstr,d2+1,-1)
@@ -213,47 +174,11 @@ local function getvg(A,L)
 	return A1,A2,L1,L2
 end
 
---[[
-local function getd(I)
-	return abs(gps.A[I],gps.A[I-1]) + abs(gps.L[I],gps.L[I-1])
-end
-]]
-
-local function push(A,L)
-	--print("push", A, L)
-	--[[table.insert(gps.A, A)
-	table.insert(gps.L, L)
-	gps.dataN = gps.dataN + 1
-	if gps.dataN > gps.QueL then
-		table.remove(gps.A, 1)
-		table.remove(gps.L, 1)
-		local a1,a2,I
-		I = (gps.QueL+1)/2
-		a1 = getd(I) + getd(I+1)
-		a2 = 0
-		for i = 2, gps.QueL do
-			if i ~= I and i ~= (I+1) then
-				a2 = a2 + getd(i)
-			end
-		end
-		if a2 < gps.errL*(gps.QueL-2) and a1 > gps.errD then
-			print("gps run", gps.A[I], gps.L[I])
-			gps.A[I] = gps.A[I+1]
-			gps.L[I] = gps.L[I+1]
-		end
-		return getvg(gps.A[I], gps.L[I])
-	end]]
+local function push(A,L)	
 	return getvg(A,L)
 end
 
 local function filter(LA,RA,LL,RL)
-	--print("gps data", LA,RA,LL,RL,gps.dataN,gps.cgen)
-
-	--[[if (c.gps - gps.cgen) > 10 then
-		print("longtime no gps",c.gps,gps.cgen)
-		emptyque()
-	end]]
-
 	if slen(LA) ~= 4 or (slen(LL) ~= 5 and slen(LL) ~= 4) then
 		print("err LA or LL", LA, LL)
 		return
@@ -270,7 +195,6 @@ local function filter(LA,RA,LL,RL)
 	A = tonumber(A) or 0
 	L = tonumber(L) or 0
 
-	gps.cgen = c.gps
 	return push(A, L)
 end
 
@@ -377,20 +301,17 @@ local function proc(s)
 			if hh ~= nil then
 				gps.haiba = hh
 			end
-			if sep then gps.sep = sep end
-			gps.ggalng,gps.ggalat = longti.."."..longtir,latti.."."..lattir
 		end
-		if hdp then hdop = hdp end
 	--RMC数据
 	elseif smatch(s, "RMC") then
 		gpstime,gpsfind,latti,lattir,gps.latyp,longti,longtir,gps.longtyp,spd1,cog1,gpsdate = smatch(s,"RMC,(%d%d%d%d%d%d)%.%d+,(%w),(%d*)%.*(%d*),([NS]*),(%d*)%.*(%d*),([EW]*),(.-),(.-),(%d%d%d%d%d%d),")
 		if gpsfind == "A" and longti ~= nil and longtir ~= nil and latti ~= nil and lattir ~= nil and longti ~= "" and longtir ~= "" and latti ~= "" and lattir ~= "" then
 			gps.find = "S"
 		end
-		if gpsfind == "A" and gpstime and gpsdate and gpstime ~= "" and gpsdate ~= "" then
+		if gpstime and gpsdate and gpstime ~= "" and gpsdate ~= "" then
 			local yy,mm,dd,h,m,s = tonumber(ssub(gpsdate,5,6)),tonumber(ssub(gpsdate,3,4)),tonumber(ssub(gpsdate,1,2)),tonumber(ssub(gpstime,1,2)),tonumber(ssub(gpstime,3,4)),tonumber(ssub(gpstime,5,6))
 			gps.utctime = {year=2000+yy,month=mm,day=dd,hour=h,min=m,sec=s}
-			if gps.timezone then
+			if gps.timezone and yy>=17 then
 				local newtime = rtctolocal(yy,mm,dd,h,m,s)
 				if needupdatetime(newtime) then
 					misc.setclock(newtime)
@@ -404,16 +325,7 @@ local function proc(s)
 	--GSA数据
 	elseif smatch(s,"GSA") then
 		local satesn = smatch(s,"GSA,%w*,%d*,(%d*,%d*,%d*,%d*,%d*,%d*,%d*,%d*,%d*,%d*,%d*,%d*,)") or ""
-		local mtch,num = true
-		if gps.gsaprefix == "GP" then			
-			for num in string.gmatch(satesn,"(%d*),") do
-				if slen(num) > 0 and tonumber(num) > 32 then
-					mtch = false
-					break
-				end
-			end			
-		end
-		if mtch and slen(satesn) > 0 and smatch(satesn,"%d+,") then
+		if slen(satesn) > 0 and smatch(satesn,"%d+,") then
 			gps.satesn = satesn
 		end
 	end
@@ -467,13 +379,6 @@ local function proc(s)
 		local r1,r2 = smatch(cog1, "(%d+)%.*(%d*)")
 		if r1 then
 			gps.cog = tonumber(r1)
-			local r3 = abs(gps.cog, gps.lastcog)
-			if r3 > 45 and r3 < 135 then
-				gps.lastcog = gps.cog
-				gps.cogchange = true
-			else
-				gps.cogchange = false
-			end
 		end
 	end
 
@@ -488,8 +393,8 @@ local function proc(s)
 		return
 	end
 
-	gps.olati, gps.lati, gps.latt_m  = getmilli(LA, RA)
-	gps.olong, gps.long, gps.longt_m = getmilli(LL, RL)
+	gps.olati, gps.lati = getmilli(LA, RA)
+	gps.olong, gps.long = getmilli(LL, RL)
 	gps.long = gps.long or 0
 	gps.lati = gps.lati or 0
 	gps.olong = gps.olong or 0
@@ -544,17 +449,6 @@ function diffofloc(latti1, longti1, latti2, longti2,typ) --typ=true:返回a+b ; 否
 	return diff
 end
 
-local function startpaccqry(flg)
-	if paccflg then
-		if not flg and not paccqry then return end
-		paccqry = true
-		writegps(QRY_PACC)
-	end
-end
-
-local function stoppaccqry()
-	paccqry = nil
-end
 
 --[[
 函数名：setmnea
@@ -574,208 +468,35 @@ end
 返回值：无
 ]]
 local function read(str)
-	local strgps = ""
-	local gpsreadloop = true
-
 	c.gps = c.gps + 1
-	while gpsreadloop do
-		strgps = str
-
-		if slen(strgps) == 0 then
-			--连续读了nogpschipcnt次串口，都没有数据，则认为没有gps芯片
-			if not c.nogps and c.hasgps == 0 and c.gps >= nogpschipcnt then
-				sys.dispatch(GPS_STATE_IND,GPS_NO_CHIP_EVT)
-				c.nogps = true
-				return
-			end
-			gpsreadloop = false
-		else
-			--串口有数据，则认为有gps芯片
-			if c.hasgps == 0 then
-				c.hasgps = c.gps
-				sys.dispatch(GPS_STATE_IND,GPS_HAS_CHIP_EVT)
-			end
+	proc(str)
+	--如果需要抛出NEMA数据给外部应用使用
+	if nmea_route then
+		sys.dispatch('GPS_NMEA_DATA',str)
+	end
+	if c.gpsprt ~= c.gps then
+		c.gpsprt = c.gps
+		print("gps rlt", gps.longtyp,gps.olong,gps.long,gps.latyp,gps.olati,gps.lati,gps.locationsatenum,gps.sn,gps.satenum)
+	end
+	--定位成功
+	if gps.find == "S" then
+		c.gpsfind = c.gps
+		local oldstat = gps.state
+		gps.state = 1
+		if oldstat ~= 1 then
+			sys.dispatch(GPS_STATE_IND,GPS_LOCATION_SUC_EVT)
+			print("dispatch GPS_LOCATION_SUC_EVT")
 		end
-
-		proc(strgps)
-			--如果需要抛出NEMA数据给外部应用使用
-			if nmea_route then
-				sys.dispatch('GPS_NMEA_DATA',strgps)
-			end
-		if c.gpsprt ~= c.gps then
-			c.gpsprt = c.gps
-			print("gps rlt", gps.longtyp,gps.olong,gps.long,gps.latyp,gps.olati,gps.lati,gps.locationsatenum,gps.sn,gps.satenum)
-		end
-			--定位成功
-		if gps.find == "S" then
-			gps.findall = true
-			c.gpsfind = c.gps
-			local oldstat = gps.state
-			gps.state = 1
-			if oldstat ~= 1 or gps.gnsschange then
-				gps.gnsschange = false
-				sys.dispatch(GPS_STATE_IND,GPS_LOCATION_SUC_EVT)
-				print("dispatch GPS_LOCATION_SUC_EVT")
-				lastesttimerfunc()
-				startlastesttimer()
-				startpaccqry(true)
-					c.fixitv = c.gps-c.fixbgn
-			end
-			--定位失败
-		elseif ((c.gps - c.gpsfind) > 20 or gps.gnsschange) and gps.state == 1 then
-			print("location fail")
-			if not gps.gnsschange then
-					c.fixbgn = c.gps
-				sys.dispatch(GPS_STATE_IND,GPS_LOCATION_FAIL_EVT)
-				print("dispatch GPS_LOCATION_FAIL_EVT")				
-				stoppaccqry()
-			end
-			lastesttimerfunc()
-			gps.findall = false
-			gps.state = 2
-			gps.satenum = 0
-			gps.locationsatenum = 0
-			gps.filterbgn = nil
-			gps.spd = 0			
-		end
-
-		gpsreadloop = false
-	end
-end
-
-function writeack(dat)
-	if not dat or slen(dat) == 0 or not gps.curwritem or not gps.curwritem.ack then return dat end
-
-	local hexdat = common.binstohexs(dat)
-	local cmd = common.binstohexs(gps.curwritem.cmd)
-	
-	local d1,d2 = sfind(hexdat,"B56205")	
-	if d1 and d2 and cmd then
-		local ret,id = ssub(hexdat,d2+1,d2+2),ssub(hexdat,d2+7,d2+10)
-		print("writeack",ret,id)
-		if ret == "01" and id == ssub(cmd,5,8) then
-			if id == "063E" then
-				gps.gnsschange = true
-			end
-			resetwrite()
-			write()
-		elseif ret == "00" then
-			sys.timer_stop(writetimeout)
-			writetimeout()
-		end
-		return common.hexstobins(ssub(hexdat,1,d1-1) .. ssub(hexdat,d2+15,-1))
-	end
-	
-	d1,d2 = sfind(hexdat,"B5620101")
-	if d1 and d2 and cmd and paccflg then		
-		resetwrite()
-		write()
-		local _,pac = pack.unpack(common.hexstobins(ssub(hexdat,d2+37,d2+44) or "00000000"),"<l")
-		if pac then pacc = pac end
-		startpaccqry()
-	end
-	return dat
-end
-
-local function writedata()
-	gps.curwritem = table.remove(gps.wrquene,1)
-	gps.retrywrcnt = 0
-	uart.write(gps.uartid,gps.curwritem.cmd)
-	print("gps write",common.binstohexs(gps.curwritem.cmd))
-	if gps.curwritem.ack then
-		sys.timer_start(writetimeout,1500)
-	else
-		gps.curwritem = nil
-	end
-end
-
-function write()
-	if gps.curwritem then return end
-
-	if #gps.wrquene == 0 then
-		closegps("WRGPS")
-		return
-	end
-
-	if not gps.open then
-		opengps("WRGPS")
-		uart.write(gps.uartid,"\255")
-		sys.timer_start(writedata,600)
-		gps.curwritem = {}
-	else
-		writedata()
-	end
-end
-
-function resetwrite()
-	gps.curwritem = nil
-	gps.retrywrcnt = 0
-	sys.timer_stop(writetimeout)
-end
-
-function writetimeout()
-	print("gps writetimeout",gps.retrywrcnt)
-	if gps.retrywrcnt < gps.retrywrmaxcnt then
-		uart.write(gps.uartid,gps.curwritem.cmd)
-		sys.timer_start(writetimeout,1500)
-		gps.retrywrcnt = gps.retrywrcnt + 1
-	else
-		resetwrite()
-		write()
-	end
-end
-
-function writegpscmd(ishexstr,dat,ack)
-	local cmd = ((ishexstr == true) and common.hexstobins(dat) or dat)
-	if cmd == nil or string.len(cmd) == 0 then print("writegpscmd err") return end
-	local item = {cmd=cmd,ack=ack}
-
-	table.insert(gps.wrquene,item)
-
-	if not gps.curwritem then
-		write()
-	end
-end
-
---[[
-函数名：writegps
-功能  ：向GPS芯片里写命令数据（仅适用于UBLOX GPS模块）
-参数  ：
-		typ：命令类型
-返回值：无
-]]
-function writegps(typ)
-	print("gps writegps",typ)
-	--省电模式
-	if typ == GPS_POWER_SAVE_MODE then
-		--cyclic  update period(10)  search period(60)  acquisition timeout(5)  on time(3)
-		writegpscmd(true,"B562063B2C0001060000009002001027000060EA00000000000003000A002C0100004FC1030086020000FE00000064400100FFE2",true)
-		writegpscmd(true,"B5620611020008012292",true)
-		writegpscmd(true,"B56206090D0000000000FFFF0000000000000721AF",true)
-	--连续定位模式
-	elseif typ == GPS_CONTINUOUS_MODE then
-		writegpscmd(true,"B5620611020008002191",true)
-		writegpscmd(true,"B56206090D0000000000FFFF0000000000000721AF",true)
-	--仅支持北斗定位
-	elseif typ == GPS_SINGLE_BEIDOU_GNSS then
-		--gps.gnsschange = true
-		writegpscmd(true,"B562063E2C0000002005000810000000010101010300010001010308100001000101050003000100010106080E0000000101FE29",true)
-	--仅支持GPS定位
-	elseif typ == GPS_SINGLE_GPS_GNSS then
-		--gps.gnsschange = true
-		writegpscmd(true,"B562063E2C0000002005000810000100010101010300010001010308100000000101050003000100010106080E0001000101FF3D",true)
-	--GPS和北斗混合定位
-	elseif typ == GPS_MIX_GNSS then
-		--gps.gnsschange = true
-		writegpscmd(true,"B562063E2C0000002005000810000100010101010300010001010308100001000101050003000100010106080E0000000101FF4D",true)
-	--NEMA协议版本
-	elseif typ == GPS_NMEA_VERSION then
-		writegpscmd(true,"B5620617140000410002000000000000000000E0000000000000546E",true)
-	--查询PACC
-	elseif typ == QRY_PACC then
-		writegpscmd(true,"B562010100000207",true)
-	else
-		print("writegps err",typ)
+		--定位失败
+	elseif ((c.gps - c.gpsfind) > 20) and gps.state == 1 then
+		print("location fail")
+		sys.dispatch(GPS_STATE_IND,GPS_LOCATION_FAIL_EVT)
+		print("dispatch GPS_LOCATION_FAIL_EVT")				
+		gps.state = 2
+		gps.satenum = 0
+		gps.locationsatenum = 0
+		gps.filterbgn = nil
+		gps.spd = 0			
 	end
 end
 
@@ -798,9 +519,7 @@ function opengps(tag)
 	gps.filterbgn = nil
 	gpscore.open(gpscore.WORK_RAW_MODE)
 
-	gps.gnsschange = false
 	print("gps open")
-	c.fixbgn = c.gps
 	sys.dispatch(GPS_STATE_IND,GPS_OPEN_EVT)
 end
 
@@ -825,14 +544,6 @@ function closegps(tag)
 		print("gps has close")
 		return
 	end
-	lastesttimerfunc()
-	if gps.io then
-		if gps.edge then
-			pio.pin.setlow(gps.io)
-		else
-			pio.pin.sethigh(gps.io)
-		end
-	end
 
 	gpscore.close()	
 	pm.sleep("gps")	
@@ -840,29 +551,18 @@ function closegps(tag)
 	if gps.state == 1 then
 		gps.state = 2
 	end	
-	gps.latt_m = 0
-	gps.longt_m = 0
-	--gps.lati = 0
-	--gps.long = 0
 	gps.spd = 0
 	gps.cog = 0
 	gps.haiba = 0
-	gps.sep = ""
-	gps.ggalng,gps.ggalat = "",""
 	gps.satesn = ""
-	gps.lastcog = 0
-	gps.cogchange = false
 	gps.find = ""
-	gps.findall = false
 	gps.satenum = 0
 	gps.locationsatenum = 0
 	gps.sn = 0
 	gps.sates = ""
 	gps.gsv = ""
-	gps.gnsschange = false
 	print("gps close")
 	sys.dispatch(GPS_STATE_IND,GPS_CLOSE_EVT)
-	stoppaccqry()
 end
 
 --[[
@@ -940,54 +640,6 @@ function getgpssn()
 	return gps.sn or 0
 end
 
-function getpara()
-	local t = {hdop=0,gsasatecnt=0,gsasateavgsn=0,pacc=0}
-	--if isfix() then
-		t.hdop = tonumber(smatch(hdop or "","(%d+)%.(%d*)") or "65535");
-		
-		local gsasate,gsasatesn,id = getsatesn(),{}
-		for id in string.gmatch(gsasate,"(%d*),") do
-			if id ~= "" then
-				t.gsasatecnt = t.gsasatecnt + 1
-				gsasatesn[id] = 0
-			end
-		end
-		
-		local satecnt,k,v,sn = 0
-		for k,v in pairs(gsasatesn) do
-			for id,sn in string.gmatch(gps.gsv,"(%d+),%d*,%d*,(%d+),") do
-				if k == id then
-					satecnt = satecnt + 1
-					gsasatesn[id] = tonumber(sn or "0")
-				end
-			end
-		end
-		local cnt = isfix() and getgpslocationsatenum() or 3
-		if cnt > satecnt then cnt = satecnt end
-		if cnt > 3 then cnt = 3 end
-		if cnt > 0 then
-			for sn=1,cnt do
-				local maxv,maxk = -1
-				for k,v in pairs(gsasatesn) do
-					if v > maxv then
-						maxk,maxv = k,v
-					end
-				end
-				if maxk then
-					t.gsasateavgsn = t.gsasateavgsn + maxv
-					gsasatesn[maxk] = -1
-				end
-			end
-			t.gsasateavgsn = t.gsasateavgsn / cnt
-		end
-		
-		t.pacc = (pacc or 0)/100
-	--end
-	
-	print("gps.getpara",t.hdop,t.gsasatecnt,cnt,t.gsasateavgsn,t.pacc)
-	return t
-end
-
 --[[
 函数名：isfix
 功能  ：检查GPS是否定位成功
@@ -1018,28 +670,12 @@ function getaltitude()
 	return gps.haiba or 0
 end
 
-function getsep()
-	return gps.sep or 0
-end
-
-function getggaloc()
-	return gps.ggalng or "",gps.ggalat or ""
-end
-
 function getsatesn()
 	return gps.satesn or ""
 end
 
 function getgsv()
 	return gps.gsv or ""
-end
-
-function setgsv(prefix)
-	gps.gsvprefix = prefix or ""
-end
-
-function setgsa(prefix)
-	gps.gsaprefix = prefix or ""
 end
 
 function getsatesinfo()
@@ -1076,28 +712,12 @@ end
 
 --[[
 函数名：init
-功能  ：配置GPS
-参数  ：
-		ionum：GPS供电的GPIO
-		dir：此参数没用（为了兼容之前的代码，不能去掉），随便传，
-		edge：true表示GPIO输出高电平供电，false或者nil表示GPIO输出低电平供电
-		period：串口读取NEMA数据间隔，单位毫秒，建议1000毫秒读取一次
-		id：串口ID，1表示串口1,2表示串口2
-		baud：串口波特率，例如9600
-		databits：数据位，例如8
-		parity：校验位，例如uart.PAR_NONE
-		stopbits：停止位，例如uart.STOP_1
-		apgspwronupd：是否允许开机就执行AGPS功能
+功能  ：初始化GPS
+参数  ：无
 返回值：无
 ]]
-function init(ionum,dir,edge,period,id,baud,databits,parity,stopbits,apgspwronupd)
+function init()
 	gps.open = false
-	gps.wrquene = {}
-	gps.curwritem = nil
-	gps.retrywrcnt = 0
-	gps.retrywrmaxcnt = 3
-	gps.latt_m = 0
-	gps.longt_m = 0
 	gps.lati = 0
 	gps.long = 0
 	gps.olati = 0
@@ -1108,57 +728,25 @@ function init(ionum,dir,edge,period,id,baud,databits,parity,stopbits,apgspwronup
 	gps.cog = 0
 	gps.haiba = 0
 	gps.satesn = ""
-	gps.sep = ""
-	gps.ggalng,gps.ggalat = "",""
-	gps.gsv,gps.gsvprefix = "",""
-	gps.gsaprefix = ""
-	gps.lastcog = 0
-	gps.cogchange = false
+	gps.gsv = ""
 	gps.state = 0
 	gps.find = ""
-	gps.findall = false
 	gps.satenum = 0
 	gps.locationsatenum = 0
 	gps.sn = 0
 	gps.sates = ""
-	gps.gnsschange = false
 	gps.filterbgn = nil
-	gps.filtertime = 5
+	gps.filtertime = 2
 	gps.timezone = nil
 	gps.spdtyp = GPS_KILOMETER_SPD	
 	gps.opentags = {}
-	gps.isagpspwronupd = (apgspwronupd == nil) and true or apgspwronupd
+	gps.isagpspwronupd = true
 
 	c.gps = 0
-	c.hasgps = 0
 	c.gpsfind = 0
-	c.GpsPrtMod = 180
-	c.gpsprint = 0
-	c.fixbgn = 0
-	c.fixitv = 0
 
-	--emptyque()
-	gps.cgen = 0
-	gps.QueL = 7
-	gps.errL = 100
-	gps.errD = 600
-
-	gps.io = ionum
-	gps.edge = edge
-
-	gps.period = period
-	gps.uartid = id
-	gps.baud = baud
-	gps.databits = databits
-	gps.parity = parity
-	gps.stopbits = stopbits
-
-	if ionum then
-		pio.pin.setdir(dir,ionum)
-	end
-	
-  sys.regmsg(gpscore.MSG_GPS_DATA_IND,gpsdataind)
-  sys.regmsg(gpscore.MSG_GPS_OPEN_IND,gpsopenind)
+	sys.regmsg(gpscore.MSG_GPS_DATA_IND,gpsdataind)
+	sys.regmsg(gpscore.MSG_GPS_OPEN_IND,gpsopenind)
 end
 
 --[[
@@ -1196,55 +784,12 @@ function setspdtyp(typ)
 	gps.spdtyp = typ
 end
 
-function closeuart()
-	print("gps closeuart")
-	uart.close(gps.uartid)
-	--rtos.sleep(400)
-	sys.timer_stop(read)
-end
-
-function openuart()
-	print("gps openuart")
-	uart.setup(gps.uartid,gps.baud,gps.databits,gps.parity,gps.stopbits)
-	sys.timer_start(read,gps.period)
-end
-
 function getutctime()
 	return gps.utctime
 end
 
-function getfixitv()
-	return isfix() and c.fixitv or 0
-end
-
 function isagpspwronupd()
 	return (gps.isagpspwronupd == nil) and true or gps.isagpspwronupd
-end
-
-function lastesttimerfunc()
-	if gps.lastestflg and gps.lastestprd and gps.lastestcb then
-		gps.lastestcb()
-		if not isfix() then
-			sys.timer_stop(lastesttimerfunc)
-		end
-	end
-end
-
-function startlastesttimer()
-	if isfix() and gps.lastestflg and gps.lastestprd and gps.lastestcb then
-		sys.timer_loop_start(lastesttimerfunc,gps.lastestprd)
-	end
-end
-
-function setlastest(flg,prd,cb)
-	gps.lastestflg = flg
-	gps.lastestprd = prd or 5000
-	gps.lastestcb = cb
-	startlastesttimer()
-end
-
-function setflag(pacflg)
-	paccflg = pacflg
 end
 
 function gpsopenind(success)
@@ -1260,7 +805,7 @@ function gpsdataind(ty,lens)
 		print(strgps)
 		if smatch(strgps,"PMTK010,002*2") then
 			print("syy gpsdataind",strgps)
-			sys.dispatch("AGPS_WRDATE")		
+			sys.dispatch("AGPS_WRDATE")
 		end
 		if strgps ~= "" and strgps ~= nil then	
 			read(strgps)
