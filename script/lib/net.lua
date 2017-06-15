@@ -33,16 +33,14 @@ local simerrsta
 local lac,ci,rssi = "","",0
 
 --csqqrypriod：信号强度定时查询间隔
---cengqrypriod：当前和临近小区信息定时查询间隔
-local csqqrypriod,cengqrypriod = 60*1000
+local csqqrypriod = 60*1000
 
 --cellinfo：当前小区和临近小区信息表
 --flymode：是否处于飞行模式
 --pwrkeymode：是否为电源键开机
 --csqswitch：定时查询信号强度开关
---cengswitch：定时查询当前和临近小区信息开关
 --multicellcb：获取多小区的回调函数
-local cellinfo,flymode,pwrkeymode,csqswitch,cengswitch,multicellcb = {}
+local cellinfo,flymode,pwrkeymode,csqswitch,multicellcb = {}
 
 --ledstate：网络指示灯状态INIT,FLYMODE,SIMERR,IDLE,CREG,CGATT,SCK
 --INIT：功能关闭状态
@@ -133,13 +131,6 @@ local function creg(data)
 	end
 	--注册状态发生了改变
 	if s ~= state then
-		--[[
-		if not cengqrypriod and s == "REGISTERED" then
-			setcengqueryperiod(60000)
-		else
-			cengquery()
-		end
-		--]]
 		state = s
 		--产生一个内部消息NET_STATE_CHANGED，表示GSM网络注册状态发生变化
 		dispatch("NET_STATE_CHANGED",s)
@@ -477,13 +468,6 @@ end
 返回值：无
 ]]
 function startcengtimer()
-	--设置了查询间隔 并且 不是飞行模式 并且 (打开了查询开关 或者 工作模式为完整模式)
-	if cengqrypriod and not flymode and (cengswitch or sys.getworkmode()==sys.FULL_MODE) then
-		--发送AT+CENG?查询
-		cengquery()
-		--启动定时器
-		sys.timer_start(startcengtimer,cengqrypriod)
-	end
 end
 
 --[[
@@ -533,14 +517,6 @@ end
 返回值：无
 ]]
 function setcengqueryperiod(period)
-	if period ~= cengqrypriod then		
-		if period <= 0 then
-			sys.timer_stop(startcengtimer)
-		else
-			cengqrypriod = period
-			startcengtimer()
-		end
-	end
 end
 
 --[[
@@ -550,8 +526,6 @@ end
 返回值：无
 ]]
 function cengquery()
-	--不是飞行模式，发送AT+CENG?
-	if not flymode then req("AT+ECELL") end
 end
 
 --[[
@@ -562,9 +536,6 @@ end
 返回值：无
 ]]
 function setcengswitch(v)
-	cengswitch = v
-	--开启并且不是飞行模式
-	if v and not flymode then startcengtimer() end
 end
 
 --[[

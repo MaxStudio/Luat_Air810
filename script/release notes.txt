@@ -7,6 +7,7 @@
         (2)ril.lua：不再打印CENG的信息
         (3)agps.lua：精简代码；修正“只搜索到一个小区时无法启动AGPS功能”的问题
         (4)gps.lua：精简代码
+        (5)net.lua：删除冗余代码
     二、demo脚本修改
         (1) gps：新增几个gps接口的使用说明
 
