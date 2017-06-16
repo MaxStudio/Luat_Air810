@@ -284,7 +284,7 @@ end
 返回值：无
 ]]
 local function proc(s)
-	local latti,lattir,longti,longtir,spd1,cog1,gpsfind,gpstime,gpsdate,numofsate,numoflocationsate,hdp
+	local latti,lattir,longti,longtir,spd1,cog1,gpsfind,gpstime,gpsdate,numofsate,numoflocationsate,hdp,latyp,longtyp
 
 	if s == "" or s == nil then
 		return
@@ -294,19 +294,31 @@ local function proc(s)
 
 	--GGA数据
 	if smatch(s, "GGA") then
-		local hh,sep
-		latti,lattir,gps.latyp,longti,longtir,gps.longtyp,gpsfind,numoflocationsate,hdp,hh,sep = smatch(s,"GGA,%d+%.%d+,(%d+)%.(%d+),([NS]),(%d+)%.(%d+),([EW]),(%d),(%d+),([%d%.]*),(.*),M,(.*),M")
+		local hh
+		latti,lattir,latyp,longti,longtir,longtyp,gpsfind,numoflocationsate,hdp,hh = smatch(s,"GGA,%d+%.%d+,(%d+)%.(%d+),([NS]),(%d+)%.(%d+),([EW]),(%d),(%d+),([%d%.]*),(.*),M,.*,M")
 		if (gpsfind == "1" or gpsfind == "2" or gpsfind == "4") and longti ~= nil and longtir ~= nil and latti ~= nil and lattir ~= nil then
 			gps.find = "S"
 			if hh ~= nil then
 				gps.haiba = hh
 			end
+			if latyp=="N" or latyp=="S" then
+				gps.latyp = latyp
+			end
+			if longtyp=="E" or longtyp=="W" then
+				gps.longtyp = longtyp
+			end
 		end
 	--RMC数据
 	elseif smatch(s, "RMC") then
-		gpstime,gpsfind,latti,lattir,gps.latyp,longti,longtir,gps.longtyp,spd1,cog1,gpsdate = smatch(s,"RMC,(%d%d%d%d%d%d)%.%d+,(%w),(%d*)%.*(%d*),([NS]*),(%d*)%.*(%d*),([EW]*),(.-),(.-),(%d%d%d%d%d%d),")
+		gpstime,gpsfind,latti,lattir,latyp,longti,longtir,longtyp,spd1,cog1,gpsdate = smatch(s,"RMC,(%d%d%d%d%d%d)%.%d+,(%w),(%d*)%.*(%d*),([NS]*),(%d*)%.*(%d*),([EW]*),(.-),(.-),(%d%d%d%d%d%d),")
 		if gpsfind == "A" and longti ~= nil and longtir ~= nil and latti ~= nil and lattir ~= nil and longti ~= "" and longtir ~= "" and latti ~= "" and lattir ~= "" then
 			gps.find = "S"
+			if latyp=="N" or latyp=="S" then
+				gps.latyp = latyp
+			end
+			if longtyp=="E" or longtyp=="W" then
+				gps.longtyp = longtyp
+			end
 		end
 		if gpstime and gpsdate and gpstime ~= "" and gpsdate ~= "" then
 			local yy,mm,dd,h,m,s = tonumber(ssub(gpsdate,5,6)),tonumber(ssub(gpsdate,3,4)),tonumber(ssub(gpsdate,1,2)),tonumber(ssub(gpstime,1,2)),tonumber(ssub(gpstime,3,4)),tonumber(ssub(gpstime,5,6))
