@@ -26,8 +26,6 @@ end
 ]]
 local function connected()
 	print("connected")
-	--audio.setmicrophonegain(audiocore.MIC_VOL8)
-	--audio.setcallvol(audiocore.VOL7)
 	--50秒之后主动结束通话
 	sys.timer_start(cc.hangup,50000,"AUTO_DISCONNECT")
 end
@@ -74,7 +72,7 @@ local function ready(e,s)
 	print("ready",e,s)
 	if s=="REGISTERED" then
 		--呼叫10086
-		cc.dial("18616233557")
+		cc.dial("10086")
 	end
 	return true
 end
