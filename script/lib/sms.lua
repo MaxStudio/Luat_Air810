@@ -288,8 +288,8 @@ local function rsp(cmd,success,response,intermediate)
 				end
 			end
 		end
-    
-		local pos = smatch(cmd,"AT%+CMGR=(%d+)")
+
+		local pos = tonumber(smatch(cmd,"AT%+CMGR=(%d+)"))
 		data = data or ""
 		alpha = alpha or ""
 		dispatch("SMS_READ_CNF",success,convnum,data,pos,t,alpha,total,idx,isn)
@@ -313,12 +313,12 @@ local function rsp(cmd,success,response,intermediate)
 	end
 end
 --使用PDU模式发送
-
+local readyqrycnt,readyqrymax = 0,30
 local function smsisready()
-	print('smsisready',rtos.sms_is_ready())
-	if rtos.sms_is_ready() == 1 then
+	--print('smsisready',rtos.sms_is_ready(),readyqrycnt,readyqrymax)
+	if rtos.sms_is_ready()==1 or (readyqrymax and readyqrycnt>=readyqrymax) then
 		ready = true
-		print('smsisready2')
+		print('smsisready2',rtos.sms_is_ready(),readyqrymax,readyqrycnt)
 		req("AT+CMGF=0",nil,nil,nil,{skip=true})
 		req("AT+CSMP=17,167,0,8")
 		req("AT+CSCS=\"UCS2\"")
@@ -328,6 +328,51 @@ local function smsisready()
 		dispatch("SMS_READY")
 	else
 		sys.timer_start(smsisready,1000)
+		readyqrycnt = readyqrycnt+1
+	end
+end
+
+function setreadyqrymax(v)
+	readyqrymax = v
+end
+
+--收到的PDU格式的短信数据长度,数据内容
+local rcvlen,pdulen,rcvdata = 0,0,""
+
+--[[
+函数名：rcvdfilter
+功能  ：从AT通道收取新短信数据
+参数  ：
+		data：解析到的短信数据
+返回值：两个返回值，第一个返回值表示未处理的数据，第二个返回值表示AT通道的数据过滤器函数
+]]
+local function rcvdfilter(data)
+	--如果总长度为0，则本函数不处理收到的数据，直接返回
+	if not rcvlen or rcvlen==0 then
+		return data
+	end
+	if rcvdata=="" then
+		rcvlen = rcvlen+(tonumber(ssub(data,1,2))+1)*2
+	end
+	--剩余未收到的数据长度
+	local restlen = rcvlen-slen(rcvdata)
+	if  slen(data) > restlen then -- at通道的内容比剩余未收到的数据多
+		-- 截取网络发来的数据
+		rcvdata = rcvdata .. ssub(data,1,restlen)
+		-- 剩下的数据仍按at进行后续处理
+		data = ssub(data,restlen+1,-1)
+	else
+		rcvdata = rcvdata .. data
+		data = ""
+	end
+
+	if rcvlen == slen(rcvdata) then
+		--通知接收数据
+		rsp("AT+CMGR=65535",true,"CMT","+CMGR: 9,,"..(pdulen/2).."\r\n"..ssub(rcvdata,-pdulen,-1))
+		rcvlen,pdulen,rcvdata = 0,0,""
+		return data
+	else
+		return data, rcvdfilter
 	end
 end
 
@@ -344,6 +389,10 @@ local function urc(data,prefix)
 		local pos = smatch(data,"(%d+)",slen(prefix)+1)
         --分发收到新短信消息
 		dispatch("SMS_NEW_MSG_IND",pos)
+	elseif prefix == "+CMT" then
+        rcvlen = tonumber(smatch(data,",(%d+)"))*2
+		pdulen = rcvlen
+		return rcvdfilter
 	end
 end
 
@@ -573,18 +622,20 @@ local function readcnf(result,num,data,pos,datetime,name)
 	if d1 and d2 then
 		num = string.sub(num,d2+1,-1)
 	end
-	--删除短信
-	delete(tnewsms[1])
-	--从短信接收位置表中删除此短信的位置
-	table.remove(tnewsms,1)
+	if pos~=65535 then
+		--删除短信
+		delete(tnewsms[1])
+		--从短信接收位置表中删除此短信的位置
+		table.remove(tnewsms,1)
+	end
     
-    if total and total >1 then
+    --[[if total and total >1 then
         sys.dispatch("LONG_SMS_MERGE",num, data,datetime,name,total,idx,isn)  
         readsms()--读取下一条新短信
         return
     end
     
-    sys.dispatch("SMS_RPT_REQ",num, data,datetime)  
+    sys.dispatch("SMS_RPT_REQ",num, data,datetime)]]  
     
 	if data then
 		--短信内容转换为GB2312字符串格式
@@ -592,8 +643,10 @@ local function readcnf(result,num,data,pos,datetime,name)
 		--用户应用程序处理短信
 		if newsmscb then newsmscb(num,data,datetime) end
 	end
-	--继续读取下一条短信
-	readsms()
+	if pos~=65535 then
+		--继续读取下一条短信
+		readsms()
+	end
 end
 
 --[[
