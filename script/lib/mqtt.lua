@@ -18,9 +18,6 @@ require"mqttdup"
 local slen,sbyte,ssub,sgsub,schar,srep,smatch,sgmatch = string.len,string.byte,string.sub,string.gsub,string.char,string.rep,string.match,string.gmatch
 --报文类型
 CONNECT,CONNACK,PUBLISH,PUBACK,PUBREC,PUBREL,PUBCOMP,SUBSCRIBE,SUBACK,UNSUBSCRIBE,UNSUBACK,PINGREQ,PINGRSP,DISCONNECT = 1,2,3,4,5,6,7,8,9,10,11,12,13,14
-
-local CLEANSESS = 1
-
 --报文序列号
 local seq = 1
 
@@ -95,12 +92,12 @@ end
 ]]
 local function pack(mqttver,typ,...)
 	local para = {}
-	local function connect(alive,id,twill,user,pwd)
+	local function connect(alive,id,twill,user,pwd,cleansess)
 		local ret = lpack.pack(">bAbbHA",
 						CONNECT*16,
 						encutf8(mqttver=="3.1.1" and "MQTT" or "MQIsdp"),
 						mqttver=="3.1.1" and 4 or 3,
-						(user and 1 or 0)*128+(pwd and 1 or 0)*64+twill.retain*32+twill.qos*8+twill.flg*4+CLEANSESS*2,
+						(user and 1 or 0)*128+(pwd and 1 or 0)*64+twill.retain*32+twill.qos*8+twill.flg*4+(cleansess or 1)*2,
 						alive,
 						encutf8(id))
 		if twill.flg==1 then
@@ -126,7 +123,7 @@ local function pack(mqttver,typ,...)
 		para.dup,para.topic,para.payload,para.qos,para.retain = true,p.topic,p.payload,p.qos,p.retain
 		para.seq = p.seq or getseq()
 		--print("publish",p.dup,para.dup,common.binstohexs(para.seq))
-		local s1 = lpack.pack("bAA",PUBLISH*16+(p.dup and 1 or 0)*8+(p.qos or 0)*2+(p.retain and 1 or 0)*1,encutf8(p.topic),((p.qos or 0)>0 and para.seq or ""))
+		local s1 = lpack.pack("bAA",PUBLISH*16+(p.dup and 1 or 0)*8+(p.qos or 0)*2+p.retain or 0,encutf8(p.topic),((p.qos or 0)>0 and para.seq or ""))
 		local s2 = s1..p.payload
 		return s2
 	end
@@ -303,7 +300,8 @@ function mqttconndata(sckidx)
 					payload=tclients[mqttclientidx].willpayload or "",
 				},
 				tclients[mqttclientidx].user,
-				tclients[mqttclientidx].password)
+				tclients[mqttclientidx].password,
+				tclients[mqttclientidx].cleansession or 1)
 end
 
 --[[
@@ -454,7 +452,7 @@ function mqttsnd(sckidx,typ,usrtag)
 	elseif mqttyp==PINGREQ then
 		snd(sckidx,dat,{key=tmqttpack[typ].sndpara})
 	elseif mqttyp==DISCONNECT then
-		if not snd(sckidx,dat,{key=tmqttpack[typ].sndpara}) and tmqttpack[typ].sndcb then
+		if not snd(sckidx,dat,{key=tmqttpack[typ].sndpara,usertag=usrtag}) and tmqttpack[typ].sndcb then
 			tmqttpack[typ].sndcb(sckidx,false,{key=tmqttpack[typ].sndpara,usertag=usrtag})
 		end		
 	end	
@@ -885,6 +883,12 @@ end
 返回值：无
 ]]
 function tmqtt:disconnect(discb)
+	print("tmqtt:disconnect",self.discing,self.mqttconnected,self.sckconnected)
+	sys.timer_stop(datinactive,self.sckidx)
+	if self.discing or not self.mqttconnected or not self.sckconnected then
+		if discb then discb() end
+		return
+	end
 	self.discb = discb
 	if not disconnect(self.sckidx,"USER") and discb then discb() end
 end
@@ -906,6 +910,17 @@ function tmqtt:configwill(flg,qos,retain,topic,payload)
 	self.willretain=retain or 0
 	self.willtopic=topic or ""
 	self.willpayload=payload or ""
+end
+
+--[[
+函数名：setcleansession
+功能  ：配置clean session标志
+参数  ：
+		flg：number类型，clean session标志，仅支持0和1，默认为1
+返回值：无
+]]
+function tmqtt:setcleansession(flg)
+	self.cleansession=flg or 1
 end
 
 --[[
@@ -951,12 +966,16 @@ end
 参数  ：
 		topic：string类型，消息主题，gb2312编码[必选]
 		payload：二进制数据，消息负载，用户自定义编码，本文件不会对数据做任何编码转换处理[必选]
-		qos：number类型，服务质量等级，仅支持0和1[可选，默认0]		
+		flags：number类型，qos和retain标志，仅支持0、1、4、5[可选，默认0]
+				0表示：qos=0，retain=0
+				1表示：qos=1，retain=0
+				4表示：qos=0，retain=1
+				5表示：qos=1，retain=1
 		ackcb：function类型，qos为1时表示收到PUBACK的回调函数,qos为0时消息发送结果的回调函数[可选]
 		usertag：string类型，用户回调函数ackcb用到的第一个参数[可选]
 返回值：无
 ]]
-function tmqtt:publish(topic,payload,qos,ackcb,usertag)
+function tmqtt:publish(topic,payload,flags,ackcb,usertag)
 	--检查mqtt连接状态
 	if not self.mqttconnected then
 		print("tmqtt:publish not connected")
@@ -964,13 +983,14 @@ function tmqtt:publish(topic,payload,qos,ackcb,usertag)
 		return
 	end
 	
-	--仅支持qos 0和1
-	if qos and qos~=0 and qos~=1 then assert(false,"tmqtt:publish not support qos 2") return end
+	if flags and flags~=0 and flags~=1 and flags~=4 and flags~=5 then assert(false,"tmqtt:publish not support flags "..flags) return end
+	local qos,retain = flags and (bit.band(flags,0x03)) or 0,flags and (bit.isset(flags,2) and 1 or 0) or 0
+	--print("tmqtt:publish",flags,qos,retain)
 	--打包publish报文
-	local dat,para = pack(self.mqttver,PUBLISH,{qos=qos or 0,topic=topic,payload=payload})
+	local dat,para = pack(self.mqttver,PUBLISH,{qos=qos,retain=retain,topic=topic,payload=payload})
 	
 	--发送
-	local tpara = {key="MQTTPUB", val=para, qos=qos or 0, usertag=usertag, ackcb=ackcb}
+	local tpara = {key="MQTTPUB",val=para,qos=qos,retain=retain,usertag=usertag,ackcb=ackcb}
 	if not snd(self.sckidx,dat,tpara) then
 		mqttpubcb(self.sckidx,false,tpara)
 	end

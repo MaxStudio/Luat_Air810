@@ -34,6 +34,8 @@ gpio\uart_gpio_switch：uart和gpio功能切换控制demo项目
 
 gps GPS定位
 
+http：http client demo项目
+
 i2c：i2c通信demo项目
 
 json：json编解码测试demo项目
@@ -67,6 +69,8 @@ uart：串口demo项目
 uart_prot1项目：通过uart解析外围设备输入的一种报文（起始标志，长度，指令，数据，校验码，结束标志）
 
 update\Luat_iot_server：使用Luat物联云平台进行固件升级的demo项目
+
+update\Luat_iot_server_daemon：支持Luat物联云平台进行远程升级以及调试信息上报功能
 
 update\user_server：使用用户自己的后台进行固件升级的demo项目
 

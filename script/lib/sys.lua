@@ -33,7 +33,7 @@ local hasPwrKey = false
 
 --lib脚本版本号，只要lib中的任何一个脚本做了修改，都需要更新此版本号
 SCRIPT_LIB_VER = "1.0.7"
---支持lib脚本的最小core软件版本号
+--脚本发布时的最新core软件版本号
 CORE_MIN_VER = "Luat_V0008_AIR810"
 
 --“是否需要刷新界面”的标志，有GUI的项目才会用到此标志
@@ -159,7 +159,8 @@ end
 ]]
 function timer_start(fnc,ms,...)
 	--回调函数和时长必须有效，否则死机重启
-	assert(fnc~=nil and ms>0,"timer_start:callback function == nil")
+	assert(fnc~=nil,"timer_start:callback function==nil")
+	assert(ms>0,"timer_start:ms==0")
 	--关闭完全相同的定时器
 	if arg.n == 0 then
 		timer_stop(fnc)
@@ -229,6 +230,7 @@ function timer_stop(val,...)
 	--val为定时器id
 	if type(val) == "number" then
 		tpool[val],para[val],loop[val] = nil
+		rtos.timer_stop(val)
 	else
 		for k,v in pairs(tpool) do
 			--回调函数相同
@@ -348,7 +350,7 @@ end
 返回值：LIB_ERR_FILE文件中的错误信息
 ]]
 function getextliberr()
-	return extliberr
+	return extliberr or (readtxt(LIB_ERR_FILE) or "")
 end
 
 --[[
