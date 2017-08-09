@@ -65,7 +65,28 @@ local function gps_open(typ)
   end
 end
 
+--[[
+函数名：nemacb
+功能  ：NEMA数据的处理回调函数
+参数  ：
+		data：一条NEMA数据
+返回值：无
+]]
+local function nemacb(data)
+	print("nemacb",data)
+end
+
 gps.init()
+--设置GPS+BD定位
+--如果不调用此接口，默认也为GPS+BD定位
+--如果仅GPS定位，参数设置为1
+--如果仅BD定位，参数设置为2
+gps.setfixmode(0)
+--设置仅gps.lua内部处理NEMA数据
+--如果不调用此接口，默认也为仅gps.lua内部处理NEMA数据
+--如果gps.lua内部不处理，把nema数据通过回调函数cb提供给外部程序处理，参数设置为1,nemacb
+--如果gps.lua和外部程序都处理，参数设置为2,nemacb
+gps.setnemamode(0)
 --如果需要GPS的时间来同步模块时间，则打开下面这行注释的代码
 --gps.settimezone(gps.GPS_BEIJING_TIME)
 gps_open(testidx)

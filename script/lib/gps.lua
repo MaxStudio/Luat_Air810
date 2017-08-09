@@ -796,6 +796,46 @@ function setspdtyp(typ)
 	gps.spdtyp = typ
 end
 
+--[[
+函数名：setfixmode
+功能  ：设置定位模式
+参数  ：
+		md：定位模式
+			0：GPS+BD
+			1：仅GPS
+			2：仅BD
+返回值：无
+]]
+function setfixmode(md)
+	gps.fixmode = md or 0
+	if isopen() then
+		print("setfixmode",gps.fixmode)
+		if gps.fixmode==0 then
+			gpscore.write("$PMTK353,1,0,0,0,1*2B")
+		elseif gps.fixmode==1 then
+			gpscore.write("$PMTK353,1,0,0,0,0*2A")
+		elseif gps.fixmode==2 then
+			gpscore.write("$PMTK353,0,0,0,0,1*2A")
+		end
+	end
+end
+
+--[[
+函数名：setnemamode
+功能  ：设置NEMA数据的处理模式
+参数  ：
+		md：处理模式
+			0：仅gps.lua内部处理
+			1：gps.lua内部不处理，把nema数据通过回调函数cb提供给外部程序处理
+			2：gps.lua和外部程序都处理
+		cb：外部程序处理NEMA数据的回调函数
+返回值：无
+]]
+function setnemamode(md,cb)
+	gps.nemamode = md or 0
+	gps.nemacb = cb	
+end
+
 function getutctime()
 	return gps.utctime
 end
@@ -814,13 +854,19 @@ function gpsdataind(ty,lens)
 	if isopen() then
 		local strgps = ""	
 		strgps = gpscore.read(lens)	
-		print(strgps)
+		--print(strgps)
 		if smatch(strgps,"PMTK010,002*2") then
 			print("syy gpsdataind",strgps)
 			sys.dispatch("AGPS_WRDATE")
+			setfixmode(gps.fixmode)
 		end
-		if strgps ~= "" and strgps ~= nil then	
-			read(strgps)
+		if strgps ~= "" and strgps ~= nil then
+			if gps.nemamode==0 or gps.nemamode==2 then
+				read(strgps)
+			end
+			if (gps.nemamode==1 or gps.nemamode==2) and gps.nemacb then
+				gps.nemacb(strgps)
+			end
 		end
 	end	
 end

@@ -10,6 +10,7 @@
 		新增tmqtt:setcleansession接口
 		publish接口支持retain参数的设置
 	(4) update.lua：完善重试机制
+	(5) gps.lua：新增setfixmode和setnemamode接口
     二、demo脚本修改
         (1) 新增fs：演示文件操作接口的使用
         (2) 新增format_string：演示数据格式转换接口的使用
