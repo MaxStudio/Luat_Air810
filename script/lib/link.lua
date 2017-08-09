@@ -839,6 +839,7 @@ local apntable =
 	["46007"] = "CMNET",
 	["46001"] = "UNINET",
 	["46006"] = "UNINET",
+	["46009"] = "3GNET",
 }
 
 --[[
