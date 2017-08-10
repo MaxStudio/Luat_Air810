@@ -12,6 +12,7 @@
 	(4)update.lua：完善重试机制
 	(5)gps.lua：新增setfixmode和setnemamode接口
 	(6)sim.lua：修正“部分sim卡状态上报延迟”的问题
+	(7)misc.lua：新增getcharger接口
     二、demo脚本修改
         (1)新增fs：演示文件操作接口的使用
         (2)新增format_string：演示数据格式转换接口的使用

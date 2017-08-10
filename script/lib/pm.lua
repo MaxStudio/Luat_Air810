@@ -84,19 +84,3 @@ function sleep(tag)
 	----调用底层软件接口，真正休眠系统
 	pmd.sleep(1)
 end
-
-local function init()
-  vbatvolt = 3800
-  
-  local param = {}
-  param.ccLevel = 4050  --恒流充电点 ，低于4.15恒流，高于则恒压
-  param.cvLevel = 4200-- 充满电压点
-  param.ovLevel = 4250-- 充电限制电压
-  param.pvLevel = 4100---回充点
-  param.poweroffLevel = 3400--%0电压点
-  param.ccCurrent = 300--恒流 阶段电流
-  param.fullCurrent = 50--充满停止电流
-  pmd.init(param)
-end
-
-init()

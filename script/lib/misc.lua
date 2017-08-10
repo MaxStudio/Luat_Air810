@@ -312,6 +312,31 @@ function getvbatvolt()
 end
 
 --[[
+函数名：getcharger
+功能  ：读取充电器在位状态
+参数  ：无
+返回值：true表示外接充电器，false表示未接充电器
+]]
+function getcharger()
+	local v1,v2,v3,v4,v5 = pmd.param_get()
+	return v4
+end
+
+local function pmdinit()
+	local param = 
+	{
+		ccLevel = 4050,--恒流充电点 ，低于4.15恒流，高于则恒压
+		cvLevel = 4200,-- 充满电压点
+		ovLevel = 4250,-- 充电限制电压
+		pvLevel = 4100,---回充点
+		poweroffLevel = 3400,--%0电压点
+		ccCurrent = 300,--恒流 阶段电流
+		fullCurrent = 50,--充满停止电流
+	}
+	pmd.init(param)
+end
+
+--[[
 函数名：ind
 功能  ：本模块注册的内部消息的处理函数
 参数  ：
@@ -368,3 +393,4 @@ req("AT+AUD?")
 startclktimer()
 --注册本模块关注的内部消息的处理函数
 sys.regapp(ind,"SYS_WORKMODE_IND","UPDATE_BEGIN_IND","UPDATE_END_IND","DBG_BEGIN_IND","DBG_END_IND","NTP_BEGIN_IND","NTP_END_IND")
+pmdinit()
