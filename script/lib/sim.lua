@@ -160,6 +160,7 @@ local function cpinqry()
 	ril.regrsp("+CPIN",rsp)
 	ril.deregurc("+CPIN")
 	req("AT+CPIN?",nil,nil,nil,{skip=true})
+	return true
 end
 
 --注册AT+ICCID命令的应答处理函数
@@ -168,4 +169,5 @@ ril.regrsp("+ICCID",rsp)
 ril.regrsp("+CIMI",rsp)
 --注册+CPIN通知的处理函数
 ril.regurc("+CPIN",urc)
+sys.regapp(cpinqry,"NET_STATE_CHANGED")
 sys.timer_loop_start(cpinqry,60000)

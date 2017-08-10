@@ -358,7 +358,7 @@ ril.regrsp("+AMFAC",rsp)
 ril.regrsp("+CFUN",rsp)
 ril.regrsp("+AUD",rsp)
 --查询是否校准
-req("AT+ATWMFT=99")
+--req("AT+ATWMFT=99")
 --查询序列号
 req("AT+WISN?")
 --查询IMEI
