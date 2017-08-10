@@ -3,9 +3,9 @@
 
 详细，请点开帖子：
 
-http://www.luam2m.com/forum.php?mod=viewthread&tid=2525&extra=page%3D1
+http://bbs.openluat.com/forum.php?mod=viewthread&tid=2623&extra=page%3D1
 
 
-2）2503多路下载工具v3.1_air 是MTK基础版本下载工具，具体请看贴子：
+2）2503多路下载工具v3.1_air 是MTK基础/默认软件版本下载工具，具体请看贴子：
 
-http://bbs.airm2m.com/forum.php?mod=viewthread&tid=2534&page=1&extra=#pid6599
+http://bbs.openluat.com/forum.php?mod=viewthread&tid=2534&extra=page%3D1
