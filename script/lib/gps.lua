@@ -859,6 +859,7 @@ function gpsdataind(ty,lens)
 			print("syy gpsdataind",strgps)
 			sys.dispatch("AGPS_WRDATE")
 			setfixmode(gps.fixmode)
+			setnemamode(gps.nemamode,gps.nemacb)
 		end
 		if strgps ~= "" and strgps ~= nil then
 			if gps.nemamode==0 or gps.nemamode==2 then
