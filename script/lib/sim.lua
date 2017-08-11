@@ -160,6 +160,12 @@ local function cpinqry()
 	ril.regrsp("+CPIN",rsp)
 	ril.deregurc("+CPIN")
 	req("AT+CPIN?",nil,nil,nil,{skip=true})
+end
+
+local function netind(e,v)
+	if v=="REGISTERED" then
+		cpinqry()
+	end	
 	return true
 end
 
@@ -169,5 +175,5 @@ ril.regrsp("+ICCID",rsp)
 ril.regrsp("+CIMI",rsp)
 --注册+CPIN通知的处理函数
 ril.regurc("+CPIN",urc)
-sys.regapp(cpinqry,"NET_STATE_CHANGED")
+sys.regapp(netind,"NET_STATE_CHANGED")
 sys.timer_loop_start(cpinqry,60000)

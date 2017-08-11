@@ -32,7 +32,7 @@ local isn = 65535
 local hasPwrKey = false
 
 --lib脚本版本号，只要lib中的任何一个脚本做了修改，都需要更新此版本号
-SCRIPT_LIB_VER = "1.0.7"
+SCRIPT_LIB_VER = "1.0.8"
 --脚本发布时的最新core软件版本号
 CORE_MIN_VER = "Luat_V0008_AIR810"
 
